@@ -16,7 +16,6 @@ This application operates entirely client-side.
 
 * **Versatile Import Options:**
   * Load `.mpo` (Multi-Picture Object) files.
-  * Load `.mpo` (Multi-Picture Object) files.
   * Load existing Side-by-Side (SBS) images.
   * Load separate Left and Right photos independently.
 * **Precision Alignment (Ghosting Mode):**
