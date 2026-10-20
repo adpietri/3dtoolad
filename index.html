@@ -20,7 +20,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3dToolAD 1.0</title>
+    <title>3dToolAD 1.1</title>
     <style>
         /* === DARK THEME (DEFAULT) === */
         :root {
@@ -285,7 +285,7 @@
     <!-- Top Navbar -->
     <div class="navbar">
         <div class="navbar-brand">
-            3DToolAD v1.0 (Beta)
+            3DToolAD v1.1 (Beta)
         </div>
         <div class="top-actions">
             <button id="btnTheme" title="Toggle Light/Dark Theme (D)">
@@ -939,7 +939,7 @@
             anaglyphCtx.putImageData(finalData, 0, 0);
         }
 
-        // === SBS MODAL SYSTEM ===
+        // === SBS EXPORT MODAL ===
         const sbsModal = document.getElementById('sbsModal');
         const sbsLayoutMode = document.getElementById('sbsLayoutMode');
         const sbsBorderStyle = document.getElementById('sbsBorderStyle');
@@ -975,77 +975,71 @@
             let img1 = al.L, img2 = al.R;
             if (mode === 'crosseye') { img1 = al.R; img2 = al.L; }
 
-            // Fix stretched image (Preserve Aspect Ratio)
             if (mode === 'full-sbs' || mode === 'crosseye') {
                 finalW = w * 2; finalH = h;
                 Rx = w;
             } else if (mode === 'half-sbs') {
-                finalW = w; finalH = h / 2; // Mathematical correction
+                finalW = w; finalH = h / 2;
                 Lw = w / 2; Lh = h / 2; Rw = w / 2; Rh = h / 2;
                 Rx = w / 2;
             } else if (mode === 'top-bottom') {
                 finalW = w; finalH = h * 2;
                 Ry = h;
             } else if (mode === 'half-tb') {
-                finalW = w / 2; finalH = h; // Mathematical correction
+                finalW = w / 2; finalH = h;
                 Lw = w / 2; Lh = h / 2; Rw = w / 2; Rh = h / 2;
                 Ry = h / 2;
             }
 
-            let padX = 0, padY = 0, gap = 0;
+            let padX = 0, padY = 0, gapX = 0, gapY = 0;
             if (borderStyle !== 'none') {
                 const minDim = Math.min(finalW, finalH);
                 padX = Math.round(minDim * 0.04); 
-                padY = Math.round(minDim * 0.08); // Slightly larger top/bottom margin
-                gap = Math.round(minDim * 0.02);
+                padY = Math.round(minDim * 0.08);
+                gapX = padX * 2;
+                gapY = padY * 2;
                 
                 if (mode.includes('sbs') || mode === 'crosseye') {
-                    finalW += (padX * 2) + gap;
+                    finalW += (padX * 2) + gapX;
                     finalH += (padY * 2);
                     Lx += padX; Ly += padY;
-                    Rx += padX + gap; Ry += padY;
+                    Rx += padX + gapX;
+                    Ry += padY;
                 } else { 
                     finalW += (padX * 2);
-                    finalH += (padY * 2) + gap;
+                    finalH += (padY * 2) + gapY;
                     Lx += padX; Ly += padY;
-                    Rx += padX; Ry += padY + gap;
+                    Rx += padX; Ry += padY + gapY;
                 }
             }
 
             sbsPreviewCanvas.width = finalW;
             sbsPreviewCanvas.height = finalH;
 
-            // Background
             if (borderStyle !== 'none') {
                 sbsPreviewCtx.fillStyle = bgColor;
                 sbsPreviewCtx.fillRect(0, 0, finalW, finalH);
             }
 
-            // Function to draw the image with optional Arch clipping (Vintage)
             function drawImageClipped(img, x, y, iw, ih) {
                 sbsPreviewCtx.save();
                 if (borderStyle === 'vintage') {
-                    // Dynamic radius to avoid breaking on very wide images
                     const archRadius = Math.min(iw / 2, ih * 0.4); 
                     sbsPreviewCtx.beginPath();
-                    sbsPreviewCtx.moveTo(x, y + ih); // Bottom left
-                    sbsPreviewCtx.lineTo(x, y + archRadius); // Go straight up
-                    
-                    // Draws the top arch of the classic dome
+                    sbsPreviewCtx.moveTo(x, y + ih);
+                    sbsPreviewCtx.lineTo(x, y + archRadius);
                     sbsPreviewCtx.ellipse(
                         x + (iw / 2), y + archRadius, iw / 2, archRadius, 
                         0, Math.PI, 0, false
                     );
-                    
-                    sbsPreviewCtx.lineTo(x + iw, y + ih); // Go down the right side
+                    sbsPreviewCtx.lineTo(x + iw, y + ih);
                     sbsPreviewCtx.closePath();
-                    sbsPreviewCtx.clip(); // Apply the arched mask
+                    sbsPreviewCtx.clip();
                 }
                 sbsPreviewCtx.drawImage(img, x, y, iw, ih);
                 sbsPreviewCtx.restore();
             }
 
-            // Draw perfectly symmetrical frames
             drawImageClipped(img1, Lx, Ly, Lw, Lh);
             drawImageClipped(img2, Rx, Ry, Rw, Rh);
         }
@@ -1296,12 +1290,9 @@
             } catch (e) { showToast("Error exporting MPO.", true); } finally { btn.disabled = false; btn.innerText = "Save as MPO (M)"; }
         });
 
-        // === KEYBOARD SHORTCUTS CONTROLLER ===
+        // --- KEYBOARD SHORTCUTS CONTROLLER ---
         document.addEventListener('keydown', (e) => {
-            // Ignore system shortcuts with Ctrl, Alt or Cmd to avoid browser conflicts
             if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-            // Ignore the key if a drop-down menu or input that requires typing is in use
             if (document.activeElement && document.activeElement.tagName === 'SELECT') return;
 
             const key = e.key.toLowerCase();
@@ -1309,13 +1300,11 @@
             const isEditorActive = screenEditor.classList.contains('active');
             const isModalActive = sbsModal.classList.contains('active');
 
-            // --- GLOBAL SHORTCUTS ---
             if (key === 'd') {
                 btnTheme.click();
                 return;
             }
 
-            // --- SHORTCUTS: HOME SCREEN (UPLOAD) ---
             if (isUploadActive) {
                 if (key === 'o') document.getElementById('inputSbs').click();
                 if (key === 'l') document.getElementById('inputLeft').click();
@@ -1323,7 +1312,6 @@
                 return;
             }
 
-            // --- SHORTCUTS: SBS MODAL ---
             if (isModalActive) {
                 if (key === 's') {
                     e.preventDefault(); 
@@ -1332,13 +1320,12 @@
                 if (key === 'x') {
                     document.getElementById('btnCloseSbsModal').click();
                 }
-                return; // Important to prevent editor shortcuts from triggering underneath
+                return; 
             }
 
-            // --- SHORTCUTS: EDITOR SCREEN ---
             if (isEditorActive) {
                 if (key === ' ') {
-                    e.preventDefault(); // Prevent page scrolling
+                    e.preventDefault(); 
                     document.getElementById('btnPlayPause').click();
                 }
                 if (key === 's') {
@@ -1352,8 +1339,6 @@
                 if (key === 'a') document.querySelector('.view-tab[data-target="anaglyph"]').click();
                 if (key === 'm') document.getElementById('btnExportMPO').click();
                 if (key === 'g') document.getElementById('btnExportGIF').click();
-                
-                // Conflict adaptations (V = Video | P = PNG/Anaglyph)
                 if (key === 'v') document.getElementById('btnExportVideo').click();
                 if (key === 'p') document.getElementById('btnExportAnaglyph').click();
             }
