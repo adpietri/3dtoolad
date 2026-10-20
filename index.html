@@ -19,8 +19,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3dToolAD 1.1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3dToolAD 1.2</title>
     <style>
         /* === DARK THEME (DEFAULT) === */
         :root {
@@ -285,7 +285,7 @@
     <!-- Top Navbar -->
     <div class="navbar">
         <div class="navbar-brand">
-            3DToolAD v1.1 (Beta)
+            3DToolAD v1.2 (Beta)
         </div>
         <div class="top-actions">
             <button id="btnTheme" title="Toggle Light/Dark Theme (D)">
@@ -306,6 +306,15 @@
                 Load SBS or MPO File (O)
                 <input type="file" id="inputSbs" accept="image/*,.mpo">
             </label>
+            <div class="control-group" style="margin-top: 14px; text-align: left;">
+                <label>Layout of a single non-MPO file</label>
+                <select id="sbsInputLayout">
+                    <option value="sbs" selected>Side-by-side (left | right)</option>
+                    <option value="cross">Cross-eye (right | left)</option>
+                    <option value="tb">Top-bottom (left over right)</option>
+                </select>
+            </div>
+            <p style="margin: 14px 0 0; font-size: 0.8rem;">You can also drag &amp; drop one file (MPO / SBS) or two photos (left, right).</p>
             
             <div style="margin: 30px 0; color: var(--panel-border); display: flex; align-items: center; justify-content: center; gap: 10px;">
                 <span style="flex: 1; height: 1px; background: var(--panel-border);"></span>
@@ -351,6 +360,11 @@
                     <label>Y-Axis (Vertical) <span id="valY" style="color:var(--primary); font-weight: bold;">0</span></label>
                     <input type="range" id="alignY" min="-200" max="200" value="0">
                 </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                    <button type="button" class="btn btn-outline" id="btnAutoAlign" style="flex: 1; padding: 10px;" title="Auto-align (N)">Auto-align (N)</button>
+                    <button type="button" class="btn btn-outline" id="btnResetAlign" style="flex: 1; padding: 10px;">Reset</button>
+                    <button type="button" class="btn btn-outline" id="btnSwapLR" style="flex: 1 1 100%; padding: 10px;" title="Swap left/right (E)">Swap L/R (E)</button>
+                </div>
             </div>
 
             <div class="panel-section" id="animSettingsPanel">
@@ -380,6 +394,7 @@
                         <option value="crosseye">Cross-eyed (Side-by-side)</option>
                     </select>
                 </div>
+                <div id="anaRenderer" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;"></div>
             </div>
         </div>
 
@@ -439,6 +454,8 @@
                         <option value="half-sbs">Half Side-by-Side (Proportional Scale)</option>
                         <option value="top-bottom">Full Top-Bottom</option>
                         <option value="half-tb">Half Top-Bottom (Proportional Scale)</option>
+                        <option value="half-sbs-ana">Half Side-by-Side (Anamorphic - TV / 3D players)</option>
+                        <option value="half-tb-ana">Half Top-Bottom (Anamorphic - TV / 3D players)</option>
                         <option value="crosseye">Cross-Eyed (Swapped L/R)</option>
                     </select>
                 </div>
@@ -460,6 +477,14 @@
                     </div>
                 </div>
 
+                <div class="control-group" style="margin-top: 20px;">
+                    <label>File Format</label>
+                    <select id="sbsFormat">
+                        <option value="jpg" selected>JPEG (small, best for TVs)</option>
+                        <option value="png">PNG (lossless, large)</option>
+                    </select>
+                </div>
+
                 <div style="margin-top: auto; padding-top: 30px;">
                     <button class="btn" id="btnConfirmSbsSave">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
@@ -477,6 +502,12 @@
     <script>
         // --- GLOBALS ---
         let frameL = null, frameR = null;
+        let pvL = null, pvR = null, pvScale = 1;      // reduced-resolution copies used by the live views
+        let origL = null, origR = null;               // original JPEG bytes (lossless MPO pass-through)
+        let fileL = null, fileR = null;               // separate uploads
+        let busy = false;                             // an export is running
+        let sbsAl = null;                             // aligned frames cached while the SBS modal is open
+        const PREVIEW_MAX = 1600;
         let imagesLoaded = false;
         let isPlaying = false;
         let currentFrame = 0;
@@ -487,7 +518,6 @@
         let isAligning = false;
         let wasPlayingBeforeAlign = false;
 
-        let urlLeft = null, urlRight = null;
         let currentTab = 'wiggle';
 
         // --- DOM ELEMENTS ---
@@ -520,23 +550,25 @@
         let toastTimeout;
 
         // --- THEME LOGIC ---
-        btnTheme.addEventListener('click', () => {
-            const currentTheme = document.body.getAttribute('data-theme');
-            if (currentTheme === 'light') {
-                document.body.removeAttribute('data-theme');
-            } else {
-                document.body.setAttribute('data-theme', 'light');
-            }
-        });
+        function applyTheme(t, save) {
+            if (t === 'light') document.body.setAttribute('data-theme', 'light'); else document.body.removeAttribute('data-theme');
+            if (save) { try { localStorage.setItem('3dtool-theme', t); } catch (e) { } }
+        }
+        (function initTheme() {
+            let t = null; try { t = localStorage.getItem('3dtool-theme'); } catch (e) { }
+            if (!t && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) t = 'light';
+            if (t) applyTheme(t, false);
+        })();
+        btnTheme.addEventListener('click', () => applyTheme(document.body.getAttribute('data-theme') === 'light' ? 'dark' : 'light', true));
 
         // --- UI & TAB LOGIC ---
         document.querySelectorAll('.view-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
-                const target = e.target.getAttribute('data-target');
+                const target = e.currentTarget.getAttribute('data-target');
                 currentTab = target;
                 
                 document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
-                e.target.classList.add('active');
+                e.currentTarget.classList.add('active');
                 
                 document.querySelectorAll('.canvas-container canvas').forEach(c => c.classList.remove('active'));
                 document.getElementById(`${target}Canvas`).classList.add('active');
@@ -581,11 +613,9 @@
             if (animationId) cancelAnimationFrame(animationId);
             animationId = null;
 
-            frameL = null; frameR = null;
-            if (urlLeft) URL.revokeObjectURL(urlLeft);
-            if (urlRight) URL.revokeObjectURL(urlRight);
-            urlLeft = null; urlRight = null;
-            
+            frameL = null; frameR = null; pvL = null; pvR = null; origL = null; origR = null; sbsAl = null;
+            fileL = null; fileR = null;
+
             offsetX = 0; offsetY = 0;
             alignX.value = 0; alignY.value = 0;
             valX.innerText = "0"; valY.innerText = "0";
@@ -596,10 +626,7 @@
             document.getElementById('inputLeft').value = '';
             document.getElementById('inputRight').value = '';
             
-            document.getElementById('badgeLeft').innerText = 'Waiting...';
-            document.getElementById('badgeLeft').className = 'status-badge';
-            document.getElementById('badgeRight').innerText = 'Waiting...';
-            document.getElementById('badgeRight').className = 'status-badge';
+            setBadge('L', 'Waiting...', false); setBadge('R', 'Waiting...', false);
 
             screenEditor.classList.remove('active');
             screenUpload.classList.add('active');
@@ -662,27 +689,50 @@
             return (p + 1 < v.length && v[p] === 0xFF && v[p + 1] === 0xD8) ? p : -1;
         }
 
-        function findTrueEndOfJpeg(buffer) {
-            const view = new DataView(buffer);
-            let offset = 0;
-            if (view.getUint16(offset) !== 0xFFD8) return buffer.byteLength;
-            offset += 2;
-            while (offset < view.byteLength - 1) {
-                if (view.getUint8(offset) === 0xFF) {
-                    const marker = view.getUint8(offset+1);
-                    if (marker === 0xD9) return offset + 2;
-                    if (marker === 0xDA) {
-                        offset += 2; offset += view.getUint16(offset);
-                        while (offset < view.byteLength - 1) {
-                            if (view.getUint8(offset) === 0xFF && view.getUint8(offset + 1) === 0xD9) return offset + 2;
-                            offset++;
+        // Reads the MP Entry table (tag 0xB002) so images are located by their real offsets.
+        function readMpfOffsets(buffer) {
+            try {
+                const v = new Uint8Array(buffer), dv = new DataView(buffer);
+                if (v.length < 8 || dv.getUint16(0) !== 0xFFD8) return null;
+                let p = 2;
+                while (p + 4 < v.length && v[p] === 0xFF) {
+                    const m = v[p + 1]; if (m === 0xDA || m === 0xD9) break;
+                    const len = dv.getUint16(p + 2);
+                    if (m === 0xE2 && v[p + 4] === 0x4D && v[p + 5] === 0x50 && v[p + 6] === 0x46 && v[p + 7] === 0) {
+                        const t = p + 8, le = v[t] === 0x49;
+                        const g16 = o => dv.getUint16(t + o, le), g32 = o => dv.getUint32(t + o, le);
+                        const ifd = g32(4), n = g16(ifd);
+                        for (let i = 0; i < n; i++) {
+                            const e = ifd + 2 + i * 12;
+                            if (g16(e) === 0xB002) {
+                                const cnt = g32(e + 4), off = g32(e + 8), res = [];
+                                for (let j = 0; j < Math.floor(cnt / 16); j++) { const q = off + j * 16; res.push({ size: g32(q + 4), offset: j === 0 ? 0 : t + g32(q + 8) }); }
+                                return res;
+                            }
                         }
-                    } else if (marker >= 0xE0 && marker <= 0xFE) {
-                        offset += 2; offset += view.getUint16(offset);
-                    } else { offset += 2; }
-                } else { offset++; }
-            }
-            return buffer.byteLength;
+                        return null;
+                    }
+                    p += 2 + len;
+                }
+            } catch (e) { }
+            return null;
+        }
+
+        function jpegOrientation(buf) {
+            try {
+                const v = new DataView(buf); let p = 2;
+                while (p + 4 < v.byteLength && v.getUint8(p) === 0xFF) {
+                    const m = v.getUint8(p + 1); if (m === 0xDA) break;
+                    const len = v.getUint16(p + 2);
+                    if (m === 0xE1 && v.getUint32(p + 4) === 0x45786966) {
+                        const t = p + 10, le = v.getUint16(t) === 0x4949, ifd = v.getUint32(t + 4, le), n = v.getUint16(t + ifd, le);
+                        for (let i = 0; i < n; i++) { const e = t + ifd + 2 + i * 12; if (v.getUint16(e, le) === 0x0112) return v.getUint16(e + 8, le); }
+                        return 1;
+                    }
+                    p += 2 + len;
+                }
+            } catch (e) { }
+            return 1;
         }
 
         async function looksLikeMPO(file) {
@@ -691,13 +741,17 @@
             return false;
         }
 
+        // Split an MPO into its first two JPEGs (MPF index first, marker scan as fallback).
         async function parseMPO(file) {
-            const buffer = await file.arrayBuffer();
-            const splitIndex = findSecondImageOffset(buffer);
-            if (splitIndex === -1 || splitIndex === 0) throw new Error("Could not split MPO.");
-            const blob1 = new Blob([buffer.slice(0, splitIndex)], {type: 'image/jpeg'});
-            const blob2 = new Blob([buffer.slice(splitIndex)], {type: 'image/jpeg'});
-            return [URL.createObjectURL(blob1), URL.createObjectURL(blob2)];
+            const buffer = await file.arrayBuffer(), v = new Uint8Array(buffer);
+            let b = -1, end = buffer.byteLength;
+            const mp = readMpfOffsets(buffer);
+            if (mp && mp.length >= 2 && mp[1].offset > 0 && v[mp[1].offset] === 0xFF && v[mp[1].offset + 1] === 0xD8) {
+                b = mp[1].offset; if (mp[1].size > 0) end = Math.min(end, b + mp[1].size);
+            }
+            if (b < 0) b = findSecondImageOffset(buffer);
+            if (b <= 0) throw new Error("Could not split MPO.");
+            return [buffer.slice(0, b), buffer.slice(b, end)];
         }
 
         // --- IMAGE PROCESSING ---
@@ -706,96 +760,128 @@
                 const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src;
             });
         }
-
-        function extractFrames(img, isSbs) {
-            let limitW = img.width, limitH = img.height;
-            frameL = document.createElement('canvas'); frameR = document.createElement('canvas');
-            if (isSbs) {
-                const halfW = Math.floor(limitW / 2);
-                frameL.width = halfW; frameL.height = limitH; frameR.width = halfW; frameR.height = limitH;
-                frameL.getContext('2d').drawImage(img, 0, 0, Math.floor(img.width/2), img.height, 0, 0, halfW, limitH);
-                frameR.getContext('2d').drawImage(img, Math.floor(img.width/2), 0, Math.ceil(img.width/2), img.height, 0, 0, halfW, limitH);
-            } else {
-                frameL.width = limitW; frameL.height = limitH; frameR.width = limitW; frameR.height = limitH;
-            }
-            wiggleCanvas.width = frameL.width; wiggleCanvas.height = frameL.height;
-            anaglyphCanvas.width = frameL.width; anaglyphCanvas.height = frameL.height;
+        function imgFromBuffer(buf) {
+            const url = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));
+            return loadImageAsync(url).finally(() => URL.revokeObjectURL(url));
+        }
+        function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+        function scaledCanvas(src, w, h) { const c = mkCanvas(w, h), x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h); return c; }
+        function coverDraw(ctx, img, w, h) { // fills w x h without distortion (centre crop)
+            const iw = img.width, ih = img.height;
+            if (iw === w && ih === h) { ctx.drawImage(img, 0, 0); return; }
+            const s = Math.max(w / iw, h / ih), sw = w / s, sh = h / s;
+            ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
         }
 
-        function extractFramesFromMPO(imgL, imgR) {
+        // Low-resolution copies drive every live view; full-resolution frames are only used for export.
+        function buildPreview() {
+            const w = frameL.width, h = frameL.height;
+            pvScale = Math.min(1, PREVIEW_MAX / Math.max(w, h));
+            if (pvScale >= 1) { pvScale = 1; pvL = frameL; pvR = frameR; return; }
+            const pw = Math.max(2, Math.round(w * pvScale)), ph = Math.max(2, Math.round(h * pvScale));
+            pvScale = pw / w; pvL = scaledCanvas(frameL, pw, ph); pvR = scaledCanvas(frameR, pw, ph);
+        }
+
+        function setAlignRange() {
+            const lim = Math.max(200, Math.round(Math.max(frameL.width, frameL.height) * 0.1));
+            [alignX, alignY].forEach(s => { s.min = -lim; s.max = lim; s.value = 0; });
+            offsetX = 0; offsetY = 0; valX.innerText = "0"; valY.innerText = "0";
+        }
+
+        function finishFrames() { buildPreview(); setAlignRange(); isAligning = false; }
+
+        function setFrames(imgL, imgR, rawL, rawR) {
             const w = imgL.width, h = imgL.height;
-            frameL = document.createElement('canvas'); frameR = document.createElement('canvas');
-            frameL.width = w; frameL.height = h; frameR.width = w; frameR.height = h;
-            frameL.getContext('2d').drawImage(imgL, 0, 0, w, h); frameR.getContext('2d').drawImage(imgR, 0, 0, w, h);
-            wiggleCanvas.width = w; wiggleCanvas.height = h;
-            anaglyphCanvas.width = w; anaglyphCanvas.height = h;
+            frameL = mkCanvas(w, h); frameR = mkCanvas(w, h);
+            frameL.getContext('2d').drawImage(imgL, 0, 0); coverDraw(frameR.getContext('2d'), imgR, w, h);
+            // keep original bytes for a lossless MPO export when nothing was resampled
+            const okRaw = rawL && rawR && imgR.width === w && imgR.height === h && jpegOrientation(rawL) === 1 && jpegOrientation(rawR) === 1;
+            origL = okRaw ? rawL : null; origR = okRaw ? rawR : null;
+            finishFrames();
         }
 
-        // --- INPUT EVENT LISTENERS ---
-        document.getElementById('inputSbs').addEventListener('change', async (e) => {
-            const file = e.target.files[0]; if (!file) return;
+        function extractFromSingle(img, layout) {
+            let w, h, sa, sb;
+            if (layout === 'tb') { w = img.width; h = Math.floor(img.height / 2); sa = [0, 0]; sb = [0, h]; }
+            else { w = Math.floor(img.width / 2); h = img.height; sa = [0, 0]; sb = [w, 0]; if (layout === 'cross') [sa, sb] = [sb, sa]; }
+            frameL = mkCanvas(w, h); frameR = mkCanvas(w, h);
+            frameL.getContext('2d').drawImage(img, sa[0], sa[1], w, h, 0, 0, w, h);
+            frameR.getContext('2d').drawImage(img, sb[0], sb[1], w, h, 0, 0, w, h);
+            origL = origR = null; finishFrames();
+        }
+
+        // --- INPUT HANDLING (file pickers + drag & drop) ---
+        async function loadSingleFile(file) {
             try {
-                const isMpoExt = file.name.toLowerCase().endsWith('.mpo');
-                let handled = false;
+                const isMpoExt = /\.mpo$/i.test(file.name); let handled = false;
                 if (isMpoExt || await looksLikeMPO(file)) {
-                    let mpoUrls = null;
                     try {
-                        mpoUrls = await parseMPO(file);
-                        const [imgL, imgR] = await Promise.all([loadImageAsync(mpoUrls[0]), loadImageAsync(mpoUrls[1])]);
-                        if (isMpoExt || (imgL.width === imgR.width && imgL.height === imgR.height)) {
-                            extractFramesFromMPO(imgL, imgR); handled = true;
-                        }
+                        const [b1, b2] = await parseMPO(file);
+                        const [i1, i2] = await Promise.all([imgFromBuffer(b1), imgFromBuffer(b2)]);
+                        if (isMpoExt || (i1.width === i2.width && i1.height === i2.height)) { setFrames(i1, i2, b1, b2); handled = true; }
                     } catch (mpoErr) { if (isMpoExt) throw mpoErr; }
-                    finally { if (mpoUrls) { URL.revokeObjectURL(mpoUrls[0]); URL.revokeObjectURL(mpoUrls[1]); } }
                 }
                 if (!handled) {
-                    const url = URL.createObjectURL(file); const img = await loadImageAsync(url);
-                    extractFrames(img, true); URL.revokeObjectURL(url);
+                    const url = URL.createObjectURL(file);
+                    try { extractFromSingle(await loadImageAsync(url), document.getElementById('sbsInputLayout').value); }
+                    finally { URL.revokeObjectURL(url); }
                 }
                 onImagesReady();
-            } catch (err) { showToast("Error reading image or MPO.", true); e.target.value = ''; }
+            } catch (err) { console.error(err); showToast("Error reading image or MPO.", true); }
+        }
+
+        function setBadge(side, text, ok) {
+            const b = document.getElementById(side === 'L' ? 'badgeLeft' : 'badgeRight');
+            b.innerText = text; b.className = 'status-badge' + (ok ? ' success' : '');
+        }
+
+        async function checkSeparateUploads() {
+            if (!fileL || !fileR) return;
+            try {
+                const uL = URL.createObjectURL(fileL), uR = URL.createObjectURL(fileR); let iL, iR;
+                try { [iL, iR] = await Promise.all([loadImageAsync(uL), loadImageAsync(uR)]); }
+                finally { URL.revokeObjectURL(uL); URL.revokeObjectURL(uR); }
+                const isJpg = f => /jpe?g/i.test(f.type) || /\.jpe?g$/i.test(f.name);
+                const [rL, rR] = (isJpg(fileL) && isJpg(fileR)) ? await Promise.all([fileL.arrayBuffer(), fileR.arrayBuffer()]) : [null, null];
+                setFrames(iL, iR, rL, rR); onImagesReady();
+            } catch (err) { console.error(err); showToast("Error processing photos.", true); }
+        }
+
+        document.getElementById('inputSbs').addEventListener('change', async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            await loadSingleFile(file); e.target.value = '';
         });
-
-        const checkSeparateUploads = async () => {
-            if (urlLeft && urlRight) {
-                try {
-                    const [imgL, imgR] = await Promise.all([loadImageAsync(urlLeft), loadImageAsync(urlRight)]);
-                    extractFrames(imgL, false);
-                    frameL.getContext('2d').drawImage(imgL, 0, 0, frameL.width, frameL.height);
-                    frameR.getContext('2d').drawImage(imgR, 0, 0, frameR.width, frameR.height);
-                    onImagesReady();
-                } catch (err) { showToast("Error processing photos.", true); }
-            }
-        };
-
         document.getElementById('inputLeft').addEventListener('change', (e) => {
-            if (!e.target.files[0]) return;
-            if (urlLeft) URL.revokeObjectURL(urlLeft); urlLeft = URL.createObjectURL(e.target.files[0]);
-            document.getElementById('badgeLeft').innerText = 'Ready'; document.getElementById('badgeLeft').className = 'status-badge success'; checkSeparateUploads();
+            if (!e.target.files[0]) return; fileL = e.target.files[0]; setBadge('L', 'Ready', true); checkSeparateUploads();
         });
-
         document.getElementById('inputRight').addEventListener('change', (e) => {
-            if (!e.target.files[0]) return;
-            if (urlRight) URL.revokeObjectURL(urlRight); urlRight = URL.createObjectURL(e.target.files[0]);
-            document.getElementById('badgeRight').innerText = 'Ready'; document.getElementById('badgeRight').className = 'status-badge success'; checkSeparateUploads();
+            if (!e.target.files[0]) return; fileR = e.target.files[0]; setBadge('R', 'Ready', true); checkSeparateUploads();
         });
 
-        window.addEventListener("dragover", (e) => e.preventDefault()); window.addEventListener("drop", (e) => e.preventDefault());
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault(); if (busy) return;
+            const files = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter(f => f.type.startsWith('image/') || /\.mpo$/i.test(f.name));
+            if (!files.length) return;
+            if (files.length === 1) { loadSingleFile(files[0]); return; }
+            files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            fileL = files[0]; fileR = files[1]; setBadge('L', 'Ready', true); setBadge('R', 'Ready', true); checkSeparateUploads();
+        });
 
         // --- ALIGNMENT ---
         toggleAdvanced.addEventListener('change', (e) => {
             alignmentPanel.style.display = e.target.checked ? 'block' : 'none';
-            if (e.target.checked) startAlignment(); else endAlignment();
+            if (e.target.checked) startAlignment();
+            else { endAlignment(); if (offsetX || offsetY) showToast(`Alignment kept (X ${offsetX}, Y ${offsetY}). Use Reset to clear.`); }
         });
 
         function renderGhosting() {
             if (!imagesLoaded) return;
-            const w = frameL.width, h = frameL.height;
+            const w = pvL.width, h = pvL.height;
             const canvas = currentTab === 'wiggle' ? wiggleCanvas : anaglyphCanvas; const ctx = currentTab === 'wiggle' ? wiggleCtx : anaglyphCtx;
-            canvas.width = w; canvas.height = h;
-            ctx.clearRect(0, 0, w, h);
-            ctx.globalAlpha = 1.0; ctx.drawImage(frameL, 0, 0, w, h);
-            ctx.globalAlpha = 0.5; ctx.drawImage(frameR, offsetX, offsetY, w, h);
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            ctx.globalAlpha = 1.0; ctx.clearRect(0, 0, w, h); ctx.drawImage(pvL, 0, 0, w, h);
+            ctx.globalAlpha = 0.5; ctx.drawImage(pvR, offsetX * pvScale, offsetY * pvScale, w, h);
             ctx.globalAlpha = 1.0;
         }
 
@@ -821,23 +907,81 @@
         alignY.addEventListener('input', () => { startAlignment(); updateAlignment(); });
         ['change', 'mouseup', 'touchend'].forEach(evt => { alignX.addEventListener(evt, endAlignment); alignY.addEventListener(evt, endAlignment); });
 
+        function setOffsets(x, y) {
+            const lim = parseInt(alignX.max);
+            offsetX = Math.max(-lim, Math.min(lim, Math.round(x))); offsetY = Math.max(-lim, Math.min(lim, Math.round(y)));
+            alignX.value = offsetX; alignY.value = offsetY; valX.innerText = offsetX; valY.innerText = offsetY;
+            refreshView();
+        }
+
+        function refreshView() {
+            if (!imagesLoaded) return;
+            if (isAligning) renderGhosting();
+            else if (currentTab === 'wiggle') drawWiggleStatic(currentFrame);
+            else generateAnaglyph();
+        }
+
+        document.getElementById('btnResetAlign').addEventListener('click', () => setOffsets(0, 0));
+
+        function swapLR() {
+            if (!imagesLoaded) return;
+            [frameL, frameR] = [frameR, frameL]; [pvL, pvR] = [pvR, pvL]; [origL, origR] = [origR, origL];
+            setOffsets(-offsetX, -offsetY); showToast("Left and right swapped.");
+        }
+        document.getElementById('btnSwapLR').addEventListener('click', swapLR);
+
+        // Auto-align: coarse-to-fine search that minimises the luminance difference (aligns the dominant subject).
+        function autoAlign() {
+            if (!imagesLoaded) return;
+            const fw = frameL.width, fh = frameL.height;
+            const gray = (src, w, h) => {
+                const x = mkCanvas(w, h).getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h);
+                const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h); let m = 0;
+                for (let i = 0; i < w * h; i++) { g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; m += g[i]; }
+                m /= w * h; for (let i = 0; i < g.length; i++) g[i] -= m; return g;
+            };
+            const search = (tw, cx, cy, rx, ry) => {
+                const s = tw / fw, w = tw, h = Math.max(8, Math.round(fh * s));
+                const A = gray(frameL, w, h), B = gray(frameR, w, h), sx = Math.round(cx * s), sy = Math.round(cy * s);
+                let best = Infinity, bx = 0, by = 0;
+                for (let dy = sy - ry; dy <= sy + ry; dy++) for (let dx = sx - rx; dx <= sx + rx; dx++) {
+                    const x0 = Math.max(0, dx), x1 = Math.min(w, w + dx), y0 = Math.max(0, dy), y1 = Math.min(h, h + dy);
+                    if (x1 - x0 < w / 2 || y1 - y0 < h / 2) continue;
+                    let sum = 0;
+                    for (let y = y0; y < y1; y += 2) { const ra = y * w, rb = (y - dy) * w - dx; for (let x = x0; x < x1; x += 2) sum += Math.abs(A[ra + x] - B[rb + x]); }
+                    sum /= (x1 - x0) * (y1 - y0);
+                    if (sum < best) { best = sum; bx = dx; by = dy; }
+                }
+                return { x: bx / s, y: by / s };
+            };
+            showToast("Auto-aligning…");
+            setTimeout(() => {
+                try {
+                    let r = search(256, 0, 0, 38, 20);
+                    const tw = Math.min(fw, 1024); if (tw > 256) r = search(tw, r.x, r.y, Math.ceil(tw / 256) + 2, Math.ceil(tw / 256) + 2);
+                    setOffsets(r.x, r.y); showToast(`Auto-aligned (X ${offsetX}, Y ${offsetY}).`);
+                } catch (e) { console.error(e); showToast("Auto-align failed.", true); }
+            }, 30);
+        }
+        document.getElementById('btnAutoAlign').addEventListener('click', autoAlign);
+
         // --- ANIMATION ---
         function renderWiggleLoop(timestamp) {
             if (!isPlaying || !imagesLoaded || currentTab !== 'wiggle' || isAligning) { animationId = null; return; }
             const speed = parseInt(speedRange.value); const elapsed = timestamp - lastSwapTime;
-            const c = getCropRect(); const w = c.w, h = c.h; const resized = syncWiggleSize(c);
+            const c = getCropRect(true); const w = c.w, h = c.h; const resized = syncWiggleSize(c);
 
             if (interpolateCheck.checked) {
-                const progress = Math.min(elapsed / speed, 1.0); const alpha = Math.sin(progress * (Math.PI / 2));
+                const progress = Math.max(0, Math.min(elapsed / speed, 1.0)); const alpha = Math.sin(progress * (Math.PI / 2));
                 const base = currentFrame === 0 ? 'L' : 'R', over = currentFrame === 0 ? 'R' : 'L';
                 wiggleCtx.clearRect(0, 0, w, h);
-                drawAligned(wiggleCtx, base, w, h, c); wiggleCtx.globalAlpha = alpha; drawAligned(wiggleCtx, over, w, h, c);
+                drawAligned(wiggleCtx, base, w, h, c, true); wiggleCtx.globalAlpha = alpha; drawAligned(wiggleCtx, over, w, h, c, true);
                 wiggleCtx.globalAlpha = 1.0;
                 if (elapsed >= speed) { currentFrame = 1 - currentFrame; lastSwapTime = timestamp; }
             } else {
                 const swap = elapsed >= speed;
                 if (swap) { currentFrame = 1 - currentFrame; lastSwapTime = timestamp - (elapsed % speed); }
-                if (swap || resized) { wiggleCtx.clearRect(0, 0, w, h); drawAligned(wiggleCtx, currentFrame === 0 ? 'L' : 'R', w, h, c); }
+                if (swap || resized) { wiggleCtx.clearRect(0, 0, w, h); drawAligned(wiggleCtx, currentFrame === 0 ? 'L' : 'R', w, h, c, true); }
             }
             animationId = requestAnimationFrame(renderWiggleLoop);
         }
@@ -860,27 +1004,28 @@
             }
         });
 
-        function getCropRect() {
-            const w = frameL.width, h = frameL.height;
-            const dx = Math.round(offsetX) || 0, dy = Math.round(offsetY) || 0;
+        // pv=true works on the reduced preview frames (offsets scaled to match); pv=false on full resolution.
+        function getCropRect(pv) {
+            const F = pv ? pvL : frameL, k = pv ? pvScale : 1; const w = F.width, h = F.height;
+            const dx = Math.round(offsetX * k) || 0, dy = Math.round(offsetY * k) || 0;
             const cw = w - Math.abs(dx), ch = h - Math.abs(dy);
             if (cw < 2 || ch < 2) return { x0: 0, y0: 0, w, h, dx, dy, fallback: true };
             return { x0: Math.max(0, dx), y0: Math.max(0, dy), w: cw, h: ch, dx, dy, fallback: false };
         }
 
-        function drawAligned(ctx, which, dw, dh, c) {
-            c = c || getCropRect();
-            if (which === 'L') { ctx.drawImage(frameL, c.x0, c.y0, c.w, c.h, 0, 0, dw, dh); return; }
-            if (c.fallback) ctx.drawImage(frameR, c.dx * dw / c.w, c.dy * dh / c.h, dw, dh);
-            else ctx.drawImage(frameR, c.x0 - c.dx, c.y0 - c.dy, c.w, c.h, 0, 0, dw, dh);
+        function drawAligned(ctx, which, dw, dh, c, pv) {
+            const sL = pv ? pvL : frameL, sR = pv ? pvR : frameR;
+            c = c || getCropRect(pv);
+            if (which === 'L') { ctx.drawImage(sL, c.x0, c.y0, c.w, c.h, 0, 0, dw, dh); return; }
+            if (c.fallback) ctx.drawImage(sR, c.dx * dw / c.w, c.dy * dh / c.h, dw, dh);
+            else ctx.drawImage(sR, c.x0 - c.dx, c.y0 - c.dy, c.w, c.h, 0, 0, dw, dh);
         }
 
-        function getAlignedFrames() {
-            const c = getCropRect();
-            const L = document.createElement('canvas'), R = document.createElement('canvas');
-            L.width = c.w; L.height = c.h; R.width = c.w; R.height = c.h;
-            drawAligned(L.getContext('2d'), 'L', c.w, c.h, c);
-            drawAligned(R.getContext('2d'), 'R', c.w, c.h, c);
+        function getAlignedFrames(pv) {
+            const c = getCropRect(pv);
+            const L = mkCanvas(c.w, c.h), R = mkCanvas(c.w, c.h);
+            drawAligned(L.getContext('2d'), 'L', c.w, c.h, c, pv);
+            drawAligned(R.getContext('2d'), 'R', c.w, c.h, c, pv);
             return { L, R, w: c.w, h: c.h };
         }
 
@@ -891,52 +1036,121 @@
         
         function drawWiggleStatic(idx) {
             if (!imagesLoaded) return;
-            const c = getCropRect(); syncWiggleSize(c);
+            const c = getCropRect(true); syncWiggleSize(c);
             wiggleCtx.globalAlpha = 1.0; wiggleCtx.clearRect(0, 0, c.w, c.h);
-            drawAligned(wiggleCtx, idx === 0 ? 'L' : 'R', c.w, c.h, c);
+            drawAligned(wiggleCtx, idx === 0 ? 'L' : 'R', c.w, c.h, c, true);
         }
 
-        // --- ANAGLYPH ---
+        // --- ANAGLYPH (WebGL when supported, automatic CPU fallback) ---
         document.getElementById('anaglyphMode').addEventListener('change', generateAnaglyph);
+
+        const ANA_MODES = { classic: 0, halfcolor: 1, optimized: 2, dubois: 3, grayscale: 4, redblue: 5, greenmagenta: 6 };
+        const GL = { tried: false, ok: false, gl: null, canvas: null, tex: [], maxTex: 0, uMode: null };
+
+        function anaglyphCPU(dL, dR, out, mode) {
+            for (let i = 0; i < dL.length; i += 4) {
+                const rL = dL[i], gL = dL[i+1], bL = dL[i+2], rR = dR[i], gR = dR[i+1], bR = dR[i+2]; let r, g, b;
+                switch (mode) {
+                    case 'dubois':
+                        r = 0.456*rL + 0.500*gL + 0.176*bL - 0.043*rR - 0.088*gR - 0.002*bR;
+                        g = -0.040*rL - 0.038*gL - 0.016*bL + 0.378*rR + 0.734*gR - 0.018*bR;
+                        b = -0.015*rL - 0.021*gL - 0.005*bL - 0.072*rR - 0.113*gR + 1.226*bR; break;
+                    case 'optimized': r = 0.7*gL + 0.3*bL; g = gR; b = bR; break;
+                    case 'halfcolor': r = 0.299*rL + 0.587*gL + 0.114*bL; g = gR; b = bR; break;
+                    case 'grayscale': r = 0.299*rL + 0.587*gL + 0.114*bL; g = b = 0.299*rR + 0.587*gR + 0.114*bR; break;
+                    case 'redblue': r = rL; g = 0; b = bR; break;
+                    case 'greenmagenta': r = rR; g = gL; b = bR; break;
+                    default: r = rL; g = gR; b = bR;
+                }
+                out[i] = r; out[i+1] = g; out[i+2] = b; out[i+3] = 255;
+            }
+        }
+
+        function anaglyphGL(L, R, mode, w, h) {
+            const gl = GL.gl;
+            if (gl.isContextLost()) { GL.ok = false; return null; }
+            if (w > GL.maxTex || h > GL.maxTex) return null;               // too big for this GPU -> caller uses CPU
+            if (GL.canvas.width !== w || GL.canvas.height !== h) { GL.canvas.width = w; GL.canvas.height = h; }
+            gl.viewport(0, 0, w, h);
+            [L, R].forEach((src, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, GL.tex[i]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); });
+            gl.uniform1f(GL.uMode, ANA_MODES[mode] || 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            return GL.canvas;
+        }
+
+        // Detects WebGL, builds the shader and verifies it against the CPU result once. Any failure -> CPU path.
+        function initGL() {
+            if (GL.tried) return GL.ok;
+            GL.tried = true;
+            try {
+                const c = document.createElement('canvas'); c.width = c.height = 4;
+                const opts = { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: true };
+                const gl = c.getContext('webgl', opts) || c.getContext('experimental-webgl', opts);
+                if (!gl) return false;
+                const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+                const prog = gl.createProgram();
+                gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}'));
+                gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision mediump float;varying vec2 vUv;uniform sampler2D uL;uniform sampler2D uR;uniform float uMode;
+                    void main(){
+                        vec3 l=texture2D(uL,vUv).rgb, r=texture2D(uR,vUv).rgb, o; vec3 lum=vec3(0.299,0.587,0.114);
+                        if(uMode<0.5){o=vec3(l.r,r.g,r.b);}
+                        else if(uMode<1.5){o=vec3(dot(l,lum),r.g,r.b);}
+                        else if(uMode<2.5){o=vec3(0.7*l.g+0.3*l.b,r.g,r.b);}
+                        else if(uMode<3.5){o=vec3(dot(l,vec3(0.456,0.500,0.176))+dot(r,vec3(-0.043,-0.088,-0.002)),dot(l,vec3(-0.040,-0.038,-0.016))+dot(r,vec3(0.378,0.734,-0.018)),dot(l,vec3(-0.015,-0.021,-0.005))+dot(r,vec3(-0.072,-0.113,1.226)));}
+                        else if(uMode<4.5){float y=dot(r,lum);o=vec3(dot(l,lum),y,y);}
+                        else if(uMode<5.5){o=vec3(l.r,0.0,r.b);}
+                        else {o=vec3(r.r,l.g,r.b);}
+                        gl_FragColor=vec4(clamp(o,0.0,1.0),1.0);
+                    }`));
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                gl.useProgram(prog);
+                const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+                const loc = gl.getAttribLocation(prog, 'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                for (let i = 0; i < 2; i++) {
+                    const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                    GL.tex[i] = t;
+                }
+                gl.uniform1i(gl.getUniformLocation(prog, 'uL'), 0); gl.uniform1i(gl.getUniformLocation(prog, 'uR'), 1);
+                GL.uMode = gl.getUniformLocation(prog, 'uMode'); GL.gl = gl; GL.canvas = c; GL.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+                c.addEventListener('webglcontextlost', (e) => { e.preventDefault(); GL.ok = false; });
+                // self-test against the CPU implementation
+                const n = 4, mkT = (f) => { const t = mkCanvas(n, n), x = t.getContext('2d'); for (let i = 0; i < n * n; i++) { x.fillStyle = f(i); x.fillRect(i % n, (i / n) | 0, 1, 1); } return t; };
+                const tL = mkT(i => `rgb(${i * 15},${255 - i * 12},${(i * 40) % 256})`), tR = mkT(i => `rgb(${(i * 53) % 256},${i * 9},${255 - i * 16})`);
+                const getD = (cv) => cv.getContext('2d').getImageData(0, 0, n, n).data;
+                for (const m of ['classic', 'halfcolor', 'optimized', 'dubois', 'grayscale', 'redblue', 'greenmagenta']) {
+                    const g = anaglyphGL(tL, tR, m, n, n); if (!g) throw new Error('self-test');
+                    const o = mkCanvas(n, n); o.getContext('2d').drawImage(g, 0, 0);
+                    const exp = new Uint8ClampedArray(n * n * 4); anaglyphCPU(getD(tL), getD(tR), exp, m); const got = getD(o);
+                    for (let i = 0; i < exp.length; i++) if (Math.abs(exp[i] - got[i]) > 4) throw new Error('self-test mismatch in ' + m);
+                }
+                GL.ok = true;
+            } catch (e) { console.info('WebGL anaglyph unavailable, using CPU:', e.message || e); GL.ok = false; }
+            return GL.ok;
+        }
+
+        // Draws the anaglyph (or cross-eye pair) for the current alignment into any canvas. Returns 'GPU' | 'CPU'.
+        function renderAnaglyphTo(canvas, pv) {
+            const mode = document.getElementById('anaglyphMode').value, al = getAlignedFrames(pv), w = al.w, h = al.h, ctx = canvas.getContext('2d');
+            if (mode === 'crosseye') { canvas.width = w * 2; canvas.height = h; ctx.drawImage(al.R, 0, 0, w, h); ctx.drawImage(al.L, w, 0, w, h); return 'CPU'; }
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            if (initGL()) {
+                try { const g = anaglyphGL(al.L, al.R, mode, w, h); if (g) { ctx.drawImage(g, 0, 0); return 'GPU'; } }
+                catch (e) { console.info('WebGL failed, falling back to CPU:', e); GL.ok = false; }
+            }
+            const dL = al.L.getContext('2d').getImageData(0, 0, w, h).data, dR = al.R.getContext('2d').getImageData(0, 0, w, h).data;
+            const img = ctx.createImageData(w, h); anaglyphCPU(dL, dR, img.data, mode); ctx.putImageData(img, 0, 0);
+            return 'CPU';
+        }
 
         function generateAnaglyph() {
             if (!imagesLoaded || isAligning) return;
-            const mode = document.getElementById('anaglyphMode').value;
-            const al = getAlignedFrames(); const w = al.w, h = al.h;
-
-            if (mode === 'crosseye') {
-                anaglyphCanvas.width = w * 2; anaglyphCanvas.height = h;
-                anaglyphCtx.drawImage(al.R, 0, 0, w, h); anaglyphCtx.drawImage(al.L, w, 0, w, h); return;
-            }
-
-            anaglyphCanvas.width = w; anaglyphCanvas.height = h;
-            const dataL = al.L.getContext('2d').getImageData(0, 0, w, h).data;
-            const dataR = al.R.getContext('2d').getImageData(0, 0, w, h).data;
-            
-            const finalData = anaglyphCtx.createImageData(w, h); const out = finalData.data; const len = dataL.length;
-            
-            if (mode === 'dubois') {
-                for (let i=0; i<len; i+=4) {
-                    const rL=dataL[i], gL=dataL[i+1], bL=dataL[i+2], rR=dataR[i], gR=dataR[i+1], bR=dataR[i+2];
-                    out[i]   = 0.456*rL + 0.500*gL + 0.176*bL - 0.043*rR - 0.088*gR - 0.002*bR;
-                    out[i+1] = -0.040*rL - 0.038*gL - 0.016*bL + 0.378*rR + 0.734*gR - 0.018*bR;
-                    out[i+2] = -0.015*rL - 0.021*gL - 0.005*bL - 0.072*rR - 0.113*gR + 1.226*bR; out[i+3] = 255;
-                }
-            } else if (mode === 'optimized') {
-                for (let i=0; i<len; i+=4) { out[i]=0.7*dataL[i+1]+0.3*dataL[i+2]; out[i+1]=dataR[i+1]; out[i+2]=dataR[i+2]; out[i+3]=255; }
-            } else if (mode === 'halfcolor' || mode === 'grayscale') {
-                for (let i=0; i<len; i+=4) {
-                    const gL = 0.299*dataL[i] + 0.587*dataL[i+1] + 0.114*dataL[i+2];
-                    out[i] = gL; out[i+1] = mode==='grayscale'? (0.299*dataR[i] + 0.587*dataR[i+1] + 0.114*dataR[i+2]) : dataR[i+1]; out[i+2] = mode==='grayscale'? out[i+1] : dataR[i+2]; out[i+3] = 255;
-                }
-            } else if (mode === 'redblue') {
-                for (let i=0; i<len; i+=4) { out[i]=dataL[i]; out[i+1]=0; out[i+2]=dataR[i+2]; out[i+3]=255; }
-            } else if (mode === 'greenmagenta') {
-                for (let i=0; i<len; i+=4) { out[i]=dataR[i]; out[i+1]=dataL[i+1]; out[i+2]=dataR[i+2]; out[i+3]=255; }
-            } else {
-                for (let i=0; i<len; i+=4) { out[i]=dataL[i]; out[i+1]=dataR[i+1]; out[i+2]=dataR[i+2]; out[i+3]=255; }
-            }
-            anaglyphCtx.putImageData(finalData, 0, 0);
+            const r = renderAnaglyphTo(anaglyphCanvas, true);
+            const lbl = document.getElementById('anaRenderer'); if (lbl) lbl.innerText = r === 'GPU' ? 'Renderer: GPU (WebGL)' : 'Renderer: CPU';
         }
 
         // === SBS EXPORT MODAL ===
@@ -949,12 +1163,13 @@
 
         document.getElementById('btnExportSBS').addEventListener('click', () => {
             if (!imagesLoaded) return;
+            sbsAl = getAlignedFrames(false);
             sbsModal.classList.add('active');
             updateSBSPreview();
         });
 
         document.getElementById('btnCloseSbsModal').addEventListener('click', () => {
-            sbsModal.classList.remove('active');
+            sbsModal.classList.remove('active'); sbsAl = null;
         });
 
         [sbsLayoutMode, sbsBorderStyle, sbsBgColor].forEach(el => el.addEventListener('change', updateSBSPreview));
@@ -962,7 +1177,7 @@
 
         function updateSBSPreview() {
             if (!imagesLoaded) return;
-            const al = getAlignedFrames();
+            const al = sbsAl || (sbsAl = getAlignedFrames(false));
             const mode = sbsLayoutMode.value;
             const borderStyle = sbsBorderStyle.value;
             const bgColor = sbsBgColor.value;
@@ -985,6 +1200,10 @@
             } else if (mode === 'top-bottom') {
                 finalW = w; finalH = h * 2;
                 Ry = h;
+            } else if (mode === 'half-sbs-ana') {
+                finalW = w; finalH = h; Lw = w / 2; Rw = w / 2; Rx = w / 2;
+            } else if (mode === 'half-tb-ana') {
+                finalW = w; finalH = h; Lh = h / 2; Rh = h / 2; Ry = h / 2;
             } else if (mode === 'half-tb') {
                 finalW = w / 2; finalH = h;
                 Lw = w / 2; Lh = h / 2; Rw = w / 2; Rh = h / 2;
@@ -1045,177 +1264,229 @@
         }
 
         document.getElementById('btnConfirmSbsSave').addEventListener('click', () => {
-            sbsPreviewCanvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob); 
-                const a = document.createElement('a'); 
-                a.href = url; 
-                a.download = `3d_${sbsLayoutMode.value}.png`; 
-                a.click(); 
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            const jpg = document.getElementById('sbsFormat').value === 'jpg';
+            sbsPreviewCanvas.toBlob(async (blob) => {
+                if (!blob) { showToast("Error saving image (too large for this browser).", true); return; }
+                await saveBlob(blob, `3d_${sbsLayoutMode.value}_${stamp()}.${jpg ? 'jpg' : 'png'}`);
                 showToast("SBS Image saved successfully!");
-                sbsModal.classList.remove('active');
-            }, 'image/png', 1.0);
+                sbsModal.classList.remove('active'); sbsAl = null;
+            }, jpg ? 'image/jpeg' : 'image/png', 0.95);
         });
+
+        // --- EXPORT HELPERS ---
+        const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+        const nextFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        // Touch devices get the native share sheet (Save to Files, AirDrop...); everything else downloads.
+        async function saveBlob(blob, name) {
+            try {
+                if (window.matchMedia && matchMedia('(pointer: coarse)').matches && navigator.canShare) {
+                    const f = new File([blob], name, { type: blob.type });
+                    if (navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: name }); return; }
+                }
+            } catch (e) { if (e && e.name === 'AbortError') return; }
+            const url = URL.createObjectURL(blob), a = document.createElement('a');
+            a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+        }
+
+        async function withBusy(btn, label, what, fn) {
+            if (busy || !imagesLoaded) return;
+            busy = true; const old = btn.innerText; btn.disabled = true; btn.innerText = label;
+            try { await fn(); }
+            catch (e) { console.error(e); showToast(`Error exporting ${what}: ${(e && e.message) || 'unknown error'}`, true); }
+            finally { busy = false; btn.disabled = false; btn.innerText = old; }
+        }
 
         // --- EXPORTS ---
-        document.getElementById('btnExportAnaglyph').addEventListener('click', () => {
-            if (!imagesLoaded) return;
-            if (currentTab !== 'anaglyph') generateAnaglyph();
-            anaglyphCanvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'anaglyph_3d.png'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
-                showToast("3D Image saved successfully!");
-            }, 'image/png');
+        document.getElementById('btnExportAnaglyph').addEventListener('click', (e) => {
+            withBusy(e.currentTarget, 'Rendering...', 'anaglyph', async () => {
+                const c = document.createElement('canvas'); renderAnaglyphTo(c, false);   // always full resolution
+                const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('image too large for this browser')), 'image/png'));
+                await saveBlob(blob, `anaglyph_3d_${stamp()}.png`); showToast("3D Image saved successfully!");
+            });
         });
 
-        document.getElementById('btnExportVideo').addEventListener('click', async () => {
+        // Video: rendered on a dedicated even-sized canvas, driven every frame, covering whole wiggle cycles.
+        document.getElementById('btnExportVideo').addEventListener('click', (e) => {
             if (!imagesLoaded) return;
             if (currentTab !== 'wiggle') { showToast("Switch to the Wiggle tab to record video.", true); return; }
-            const btn = document.getElementById('btnExportVideo'); btn.disabled = true; btn.innerText = "Recording 3s...";
-            const oldPlaying = isPlaying; if(!isPlaying) { isPlaying=true; lastSwapTime=performance.now(); animationId=requestAnimationFrame(renderWiggleLoop); }
-            try {
-                const stream = wiggleCanvas.captureStream(30); let mimeType = 'video/mp4';
-                if (!MediaRecorder.isTypeSupported(mimeType)) { mimeType = 'video/webm;codecs=vp9'; if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm'; }
-                const recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 8000000 }); const chunks = []; recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: mimeType }); const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; const ext = mimeType.includes('mp4') ? 'mp4' : 'webm'; a.download = `animated_wiggle.${ext}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
-                    btn.disabled = false; btn.innerText = "Save Video (MP4)"; showToast(`Video .${ext} saved successfully!`);
-                    if(!oldPlaying) { isPlaying=false; cancelAnimationFrame(animationId); animationId=null; updatePlayButtonIcon(); }
+            if (typeof MediaRecorder === 'undefined') { showToast("This browser cannot record video.", true); return; }
+            withBusy(e.currentTarget, 'Recording...', 'video', async () => {
+                const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
+                const cycles = Math.max(1, Math.ceil(3000 / (speed * 2))), duration = cycles * speed * 2;
+                const c = getCropRect(false); let vw = c.w, vh = c.h; const MAXV = 1920;
+                if (Math.max(vw, vh) > MAXV) { const s = MAXV / Math.max(vw, vh); vw = Math.round(vw * s); vh = Math.round(vh * s); }
+                vw &= ~1; vh &= ~1; if (vw < 2 || vh < 2) throw new Error('image too small');
+                const cv = mkCanvas(vw, vh), cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
+                const draw = (t) => {
+                    const ph = t / speed, idx = Math.floor(ph) % 2, frac = ph - Math.floor(ph);
+                    cx.globalAlpha = 1; cx.clearRect(0, 0, vw, vh);
+                    if (smooth) {
+                        drawAligned(cx, idx === 0 ? 'L' : 'R', vw, vh, c, false);
+                        cx.globalAlpha = Math.sin(Math.min(frac, 1) * Math.PI / 2); drawAligned(cx, idx === 0 ? 'R' : 'L', vw, vh, c, false); cx.globalAlpha = 1;
+                    } else drawAligned(cx, idx === 0 ? 'L' : 'R', vw, vh, c, false);
                 };
-                recorder.start(); setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 3000);
-            } catch (err) { showToast("Error recording video.", true); btn.disabled = false; btn.innerText = "Save Video (MP4)"; }
+                let mime = 'video/mp4';
+                if (!MediaRecorder.isTypeSupported(mime)) { mime = 'video/webm;codecs=vp9'; if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm'; }
+                const stream = cv.captureStream(30), chunks = [];
+                const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
+                rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+                const stopped = new Promise((res, rej) => { rec.onstop = res; rec.onerror = ev => rej((ev && ev.error) || new Error('recorder error')); });
+                draw(0); rec.start(); const t0 = performance.now();
+                try {
+                    await new Promise(res => { const step = now => { const t = Math.max(0, now - t0); if (t >= duration) { res(); return; } draw(t); requestAnimationFrame(step); }; requestAnimationFrame(step); });
+                } finally { if (rec.state !== 'inactive') rec.stop(); }
+                await stopped; stream.getTracks().forEach(t => t.stop());
+                const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+                await saveBlob(new Blob(chunks, { type: mime.split(';')[0] }), `wiggle_${stamp()}.${ext}`); showToast(`Video .${ext} saved successfully!`);
+            });
         });
 
-        function gifLZW(indices) {
-            const minCode = 8, clear = 256, eoi = 257;
-            const out = new Uint8Array(Math.ceil(indices.length * 1.6) + 4096);
-            let p = 0; out[p++] = minCode; let sub = p++;
-            let next = eoi + 1, size = minCode + 1, shift = 0, cur = 0;
-            const flush = (bits) => {
-                while (shift >= bits) {
-                    out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8;
-                    if (p === sub + 256) { out[sub] = 255; sub = p++; }
+        // Self-contained (no outside references) so it can run in a Web Worker or on the main thread.
+        // frames: array of RGBA Uint8ClampedArray. Builds ONE shared 256-colour palette (median cut) and uses
+        // position-based ordered dithering, so identical pixels in both frames get identical indices (no flicker).
+        function gifEncodeAll(frames, w, h, delayCs) {
+            const N = w * h;
+            const lzw = (indices) => {
+                const minCode = 8, clear = 256, eoi = 257;
+                const out = new Uint8Array(Math.ceil(indices.length * 1.6) + 4096);
+                let p = 0; out[p++] = minCode; let sub = p++;
+                let next = eoi + 1, size = minCode + 1, shift = 0, cur = 0;
+                const flush = (bits) => { while (shift >= bits) { out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8; if (p === sub + 256) { out[sub] = 255; sub = p++; } } };
+                const emit = (c) => { cur |= c << shift; shift += size; flush(8); };
+                const table = new Map(); let ib = indices[0];
+                emit(clear);
+                for (let i = 1; i < indices.length; i++) {
+                    const k = indices[i], key = (ib << 8) | k, found = table.get(key);
+                    if (found === undefined) {
+                        emit(ib);
+                        if (next === 4096) { emit(clear); next = eoi + 1; size = minCode + 1; table.clear(); }
+                        else { if (next >= (1 << size)) size++; table.set(key, next++); }
+                        ib = k;
+                    } else ib = found;
                 }
+                emit(ib); emit(eoi); flush(1);
+                if (p === sub + 1) out[sub] = 0; else { out[sub] = p - sub - 1; out[p++] = 0; }
+                return out.subarray(0, p);
             };
-            const emit = (c) => { cur |= c << shift; shift += size; flush(8); };
-            const table = new Map(); let ib = indices[0];
-            emit(clear);
-            for (let i = 1; i < indices.length; i++) {
-                const k = indices[i], key = (ib << 8) | k, found = table.get(key);
-                if (found === undefined) {
-                    emit(ib);
-                    if (next === 4096) { emit(clear); next = eoi + 1; size = minCode + 1; table.clear(); }
-                    else { if (next >= (1 << size)) size++; table.set(key, next++); }
-                    ib = k;
-                } else ib = found;
-            }
-            emit(ib); emit(eoi); flush(1);
-            if (p === sub + 1) { out[sub] = 0; }
-            else { out[sub] = p - sub - 1; out[p++] = 0; }
-            return out.subarray(0, p);
-        }
-
-        function gifRawStream(indices) {
-            const out = new Uint8Array(Math.ceil(indices.length * 9 / 8) + Math.ceil(indices.length / 254) * 2 + Math.ceil(indices.length * 1.2 / 255) + 64);
-            let p = 0; out[p++] = 8; let sub = p++; let shift = 0, cur = 0;
-            const emit = (c) => {
-                cur |= c << shift; shift += 9;
-                while (shift >= 8) { out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8; if (p === sub + 256) { out[sub] = 255; sub = p++; } }
+            const raw = (indices) => {
+                const out = new Uint8Array(Math.ceil(indices.length * 9 / 8) + Math.ceil(indices.length / 254) * 2 + Math.ceil(indices.length * 1.2 / 255) + 64);
+                let p = 0; out[p++] = 8; let sub = p++; let shift = 0, cur = 0;
+                const emit = (c) => { cur |= c << shift; shift += 9; while (shift >= 8) { out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8; if (p === sub + 256) { out[sub] = 255; sub = p++; } } };
+                emit(256);
+                for (let i = 0; i < indices.length; i++) { emit(indices[i]); if ((i % 254) === 253 && i < indices.length - 1) emit(256); }
+                emit(257);
+                while (shift > 0) { out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8; if (p === sub + 256) { out[sub] = 255; sub = p++; } }
+                if (p === sub + 1) out[sub] = 0; else { out[sub] = p - sub - 1; out[p++] = 0; }
+                return out.subarray(0, p);
             };
-            emit(256);
-            for (let i = 0; i < indices.length; i++) { emit(indices[i]); if ((i % 254) === 253 && i < indices.length - 1) emit(256); }
-            emit(257);
-            while (shift > 0) { out[p++] = cur & 0xFF; cur >>>= 8; shift -= 8; if (p === sub + 256) { out[sub] = 255; sub = p++; } }
-            if (p === sub + 1) { out[sub] = 0; } else { out[sub] = p - sub - 1; out[p++] = 0; }
-            return out.subarray(0, p);
-        }
-
-        function gifQuantize(rgba, w, h) {
-            const pixels = new Uint8Array(w * h); const f32 = new Float32Array(w * h * 3);
-            for (let i = 0; i < w * h; i++) { f32[i * 3] = rgba[i * 4]; f32[i * 3 + 1] = rgba[i * 4 + 1]; f32[i * 3 + 2] = rgba[i * 4 + 2]; }
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const idx = (y * w + x) * 3;
-                    const r = Math.max(0, Math.min(255, f32[idx])); const g = Math.max(0, Math.min(255, f32[idx + 1])); const b = Math.max(0, Math.min(255, f32[idx + 2]));
-                    const rIdx = Math.round((r / 255) * 7); const gIdx = Math.round((g / 255) * 7); const bIdx = Math.round((b / 255) * 3);
-                    pixels[y * w + x] = (rIdx * 32) + (gIdx * 4) + bIdx;
-                    const errR = r - Math.round(rIdx * (255 / 7)); const errG = g - Math.round(gIdx * (255 / 7)); const errB = b - (bIdx * 85);
-                    if (x + 1 < w) { f32[idx + 3] += errR * 0.4375; f32[idx + 4] += errG * 0.4375; f32[idx + 5] += errB * 0.4375; }
-                    if (y + 1 < h) {
-                        if (x - 1 >= 0) { const nIdx = ((y + 1) * w + (x - 1)) * 3; f32[nIdx] += errR * 0.1875; f32[nIdx + 1] += errG * 0.1875; f32[nIdx + 2] += errB * 0.1875; }
-                        const nIdx1 = ((y + 1) * w + x) * 3; f32[nIdx1] += errR * 0.3125; f32[nIdx1 + 1] += errG * 0.3125; f32[nIdx1 + 2] += errB * 0.3125;
-                        if (x + 1 < w) { const nIdx2 = ((y + 1) * w + (x + 1)) * 3; f32[nIdx2] += errR * 0.0625; f32[nIdx2 + 1] += errG * 0.0625; f32[nIdx2 + 2] += errB * 0.0625; }
-                    }
+            // ---- median-cut palette on a 5-5-5 histogram ----
+            const hist = new Uint32Array(32768), step = Math.max(1, Math.floor((N * frames.length) / 80000));
+            for (const f of frames) for (let i = 0; i < N; i += step) { const o = i * 4; hist[((f[o] >> 3) << 10) | ((f[o + 1] >> 3) << 5) | (f[o + 2] >> 3)]++; }
+            const keys = []; for (let k = 0; k < 32768; k++) if (hist[k]) keys.push(k);
+            const ch = (k, a) => a === 0 ? (k >> 10) & 31 : a === 1 ? (k >> 5) & 31 : k & 31;
+            const boxes = [keys];
+            while (boxes.length < 256) {
+                let bi = -1, bs = 0, ba = 0;
+                for (let i = 0; i < boxes.length; i++) {
+                    const b = boxes[i]; if (b.length < 2) continue;
+                    const mn = [31, 31, 31], mx = [0, 0, 0]; let pop = 0;
+                    for (const k of b) { pop += hist[k]; for (let a = 0; a < 3; a++) { const v = ch(k, a); if (v < mn[a]) mn[a] = v; if (v > mx[a]) mx[a] = v; } }
+                    let axis = 0; for (let a = 1; a < 3; a++) if (mx[a] - mn[a] > mx[axis] - mn[axis]) axis = a;
+                    const score = pop * (mx[axis] - mn[axis]); if (score > bs) { bs = score; bi = i; ba = axis; }
                 }
+                if (bi < 0) break;
+                const b = boxes[bi]; b.sort((x, y) => ch(x, ba) - ch(y, ba));
+                let pop = 0; for (const k of b) pop += hist[k];
+                let acc = 0, cut = 1; for (let i = 0; i < b.length - 1; i++) { acc += hist[b[i]]; cut = i + 1; if (acc >= pop / 2) break; }
+                boxes.splice(bi, 1, b.slice(0, cut), b.slice(cut));
             }
-            return pixels;
-        }
-
-        function buildGif(framesData, w, h, delayCs) {
-            const parts = []; let head = [];
-            const byte = (b) => head.push(b & 0xFF);
-            const word = (v) => { head.push(v & 0xFF); head.push((v >> 8) & 0xFF); };
+            const pal = new Uint8Array(768);
+            boxes.forEach((b, i) => {
+                let r = 0, g = 0, bl = 0, pop = 0;
+                for (const k of b) { const c = hist[k]; pop += c; r += ((k >> 10) & 31) * c; g += ((k >> 5) & 31) * c; bl += (k & 31) * c; }
+                pal[i * 3] = Math.round(r / pop * 255 / 31); pal[i * 3 + 1] = Math.round(g / pop * 255 / 31); pal[i * 3 + 2] = Math.round(bl / pop * 255 / 31);
+            });
+            const np = boxes.length, lut = new Uint8Array(32768);
+            for (let k = 0; k < 32768; k++) {
+                const r = ((k >> 10) & 31) * 255 / 31, g = ((k >> 5) & 31) * 255 / 31, b = (k & 31) * 255 / 31; let best = 1e9, bi = 0;
+                for (let p = 0; p < np; p++) { const dr = r - pal[p * 3], dg = g - pal[p * 3 + 1], db = b - pal[p * 3 + 2], d = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11; if (d < best) { best = d; bi = p; } }
+                lut[k] = bi;
+            }
+            const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+            const head = []; const byte = (b) => head.push(b & 0xFF), word = (v) => { head.push(v & 0xFF); head.push((v >> 8) & 0xFF); };
             const str = (t) => { for (let i = 0; i < t.length; i++) head.push(t.charCodeAt(i)); };
-            const flushHead = () => { if (head.length) { parts.push(new Uint8Array(head)); head = []; } };
+            const parts = [];
             str("GIF89a"); word(w); word(h); byte(0xF7); byte(0); byte(0);
-            for (let r = 0; r < 8; r++) for (let g = 0; g < 8; g++) for (let b = 0; b < 4; b++) { byte(Math.round(r * (255 / 7))); byte(Math.round(g * (255 / 7))); byte(b * 85); }
+            for (let i = 0; i < 768; i++) byte(pal[i]);
             byte(0x21); byte(0xFF); byte(0x0B); str("NETSCAPE2.0"); byte(0x03); byte(0x01); word(0); byte(0x00);
-            for (let f = 0; f < framesData.length; f++) {
+            for (const f of frames) {
+                const idx = new Uint8Array(N);
+                for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) {
+                    const d = (bayer[((y & 3) << 2) | (x & 3)] / 16 - 0.5) * 10, o = i * 4;
+                    let r = f[o] + d, g = f[o + 1] + d, b = f[o + 2] + d;
+                    r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
+                    idx[i] = lut[((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)];
+                }
                 byte(0x21); byte(0xF9); byte(0x04); byte(0x00); word(delayCs); byte(0x00); byte(0x00);
                 byte(0x2C); word(0); word(0); word(w); word(h); byte(0x00);
-                flushHead();
-                const idx = gifQuantize(framesData[f].data, w, h); const lz = gifLZW(idx);
-                parts.push(lz.length <= Math.ceil(idx.length * 9 / 8) ? lz : gifRawStream(idx));
+                parts.push(new Uint8Array(head)); head.length = 0;
+                const lz = lzw(idx); parts.push(lz.length <= Math.ceil(N * 9 / 8) ? lz : raw(idx));
             }
-            byte(0x3B); flushHead();
-            return new Blob(parts, { type: 'image/gif' });
+            byte(0x3B); parts.push(new Uint8Array(head));
+            return parts;
         }
 
-        document.getElementById('btnExportGIF').addEventListener('click', () => {
-            if (!imagesLoaded) return;
-            const btnExportGIF = document.getElementById('btnExportGIF');
-            btnExportGIF.disabled = true; btnExportGIF.innerText = "Generating GIF (Wait)...";
-            const resetBtn = () => { btnExportGIF.disabled = false; btnExportGIF.innerText = "Save High-Res GIF (G)"; };
+        // Runs the encoder in a Web Worker (UI stays responsive); falls back to the main thread if workers are unavailable.
+        function runGifJob(frames, w, h, delay) {
+            return new Promise((resolve, reject) => {
+                const direct = () => { try { resolve(gifEncodeAll(frames, w, h, delay)); } catch (e) { reject(e); } };
+                let url = null, wk = null;
+                try {
+                    if (typeof Worker === 'undefined' || !window.Blob || !URL.createObjectURL) return direct();
+                    const src = `self.onmessage=function(e){var d=e.data;try{self.postMessage({parts:(${gifEncodeAll.toString()})(d.frames,d.w,d.h,d.delay)});}catch(err){self.postMessage({error:String(err)});}};`;
+                    url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' })); wk = new Worker(url);
+                    const done = () => { wk.terminate(); URL.revokeObjectURL(url); };
+                    wk.onmessage = (ev) => { done(); ev.data.error ? reject(new Error(ev.data.error)) : resolve(ev.data.parts); };
+                    wk.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); done(); direct(); };
+                    wk.postMessage({ frames, w, h, delay });
+                } catch (e) { if (wk) wk.terminate(); if (url) URL.revokeObjectURL(url); direct(); }
+            });
+        }
 
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    try {
-                        const speed = parseInt(speedRange.value); const smooth = interpolateCheck.checked;
-                        const framesCount = smooth ? Math.max(2, Math.min(6, Math.floor(speed / 20))) : 1;
-                        const c = getCropRect();
-                        let exportW = c.w, exportH = c.h; const MAX_GIF_WIDTH = 800;
-                        if (exportW > MAX_GIF_WIDTH) { exportH = Math.max(1, Math.round(exportH * MAX_GIF_WIDTH / exportW)); exportW = MAX_GIF_WIDTH; }
-
-                        const offCanvas = document.createElement('canvas'); offCanvas.width = exportW; offCanvas.height = exportH;
-                        const offCtx = offCanvas.getContext('2d', { willReadFrequently: true }); const framesData = [];
-
-                        if (!smooth) {
-                            for (const which of ['L', 'R']) {
-                                offCtx.clearRect(0, 0, exportW, exportH); drawAligned(offCtx, which, exportW, exportH, c);
-                                framesData.push(offCtx.getImageData(0, 0, exportW, exportH));
-                            }
-                        } else {
-                            for (let j = 0; j < 2; j++) {
-                                const base = j === 0 ? 'L' : 'R', over = j === 0 ? 'R' : 'L';
-                                for (let i = 0; i < framesCount; i++) {
-                                    offCtx.clearRect(0, 0, exportW, exportH); drawAligned(offCtx, base, exportW, exportH, c);
-                                    offCtx.globalAlpha = Math.sin((i / framesCount) * (Math.PI / 2)); drawAligned(offCtx, over, exportW, exportH, c); offCtx.globalAlpha = 1.0;
-                                    framesData.push(offCtx.getImageData(0, 0, exportW, exportH));
-                                }
-                            }
+        document.getElementById('btnExportGIF').addEventListener('click', (e) => {
+            withBusy(e.currentTarget, 'Generating GIF (Wait)...', 'GIF', async () => {
+                await nextFrames();
+                const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
+                const framesCount = smooth ? Math.max(2, Math.min(6, Math.floor(speed / 20))) : 1;
+                const c = getCropRect(false); let W = c.w, H = c.h; const MAXW = 800;
+                if (W > MAXW) { H = Math.max(1, Math.round(H * MAXW / W)); W = MAXW; }
+                const off = mkCanvas(W, H), ctx = off.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high'; const frames = [];
+                const grab = () => frames.push(ctx.getImageData(0, 0, W, H).data);
+                if (!smooth) {
+                    for (const which of ['L', 'R']) { ctx.clearRect(0, 0, W, H); drawAligned(ctx, which, W, H, c, false); grab(); }
+                } else {
+                    for (let j = 0; j < 2; j++) {
+                        const base = j === 0 ? 'L' : 'R', over = j === 0 ? 'R' : 'L';
+                        for (let i = 0; i < framesCount; i++) {
+                            ctx.globalAlpha = 1; ctx.clearRect(0, 0, W, H); drawAligned(ctx, base, W, H, c, false);
+                            ctx.globalAlpha = Math.sin((i / framesCount) * (Math.PI / 2)); drawAligned(ctx, over, W, H, c, false); ctx.globalAlpha = 1; grab();
                         }
-
-                        const delayCs = Math.max(2, Math.round((smooth ? speed / framesCount : speed) / 10));
-                        const blob = buildGif(framesData, exportW, exportH, delayCs); const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a'); a.href = url; a.download = 'animated_wiggle.gif'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
-                        resetBtn(); showToast("Animated GIF exported successfully!");
-                    } catch (e) { showToast("Error exporting GIF.", true); resetBtn(); }
-                });
+                    }
+                }
+                const delayCs = Math.max(2, Math.round((smooth ? speed / framesCount : speed) / 10));
+                const parts = await runGifJob(frames, W, H, delayCs);
+                await saveBlob(new Blob(parts, { type: 'image/gif' }), `wiggle_${stamp()}.gif`); showToast("Animated GIF exported successfully!");
             });
         });
 
         // --- MPO CREATION ---
-        function canvasToJpegBuffer(canvas) { return new Promise(resolve => { canvas.toBlob(blob => blob.arrayBuffer().then(resolve), 'image/jpeg', 0.95); }); }
+        function canvasToJpegBuffer(canvas, q) {
+            return new Promise((resolve, reject) => {
+                canvas.toBlob(b => { if (!b) { reject(new Error('image too large for this browser')); return; } b.arrayBuffer().then(resolve, reject); }, 'image/jpeg', q || MPO_OPTS.quality);
+            });
+        }
         
         function splitJpeg(jpeg) {
             const v = new Uint8Array(jpeg); let p = 2; const segs = []; let w = 0, h = 0;
@@ -1224,50 +1495,148 @@
                 const m = v[p + 1]; if (m === 0xDA) break;
                 const len = (v[p + 2] << 8) | v[p + 3];
                 if (m >= 0xC0 && m <= 0xC2) { h = (v[p + 5] << 8) | v[p + 6]; w = (v[p + 7] << 8) | v[p + 8]; }
-                if (m !== 0xE0 && m !== 0xE1) segs.push(v.subarray(p, p + 2 + len));
+                const isMpf = m === 0xE2 && v[p + 4] === 0x4D && v[p + 5] === 0x50 && v[p + 6] === 0x46 && v[p + 7] === 0;   // drop old MPF, a new one is written
+                if (m !== 0xE0 && m !== 0xE1 && !isMpf) segs.push(v.subarray(p, p + 2 + len));
                 p += 2 + len;
             }
             return { segs, scan: v.subarray(p), w, h };
         }
 
-        function buildExifSegment(w, h) {
-            const out = new Uint8Array(190); const dv = new DataView(out.buffer); let o = 0;
-            const u16 = v => { dv.setUint16(o, v, true); o += 2; }, u32 = v => { dv.setUint32(o, v, true); o += 4; };
-            dv.setUint16(o, 0xFFE1, false); o += 2; dv.setUint16(o, 188, false); o += 2;
-            [0x45, 0x78, 0x69, 0x66, 0, 0, 0x49, 0x49, 0x2A, 0x00].forEach(b => out[o++] = b);
-            u32(8); u16(6); u16(0x0112); u16(3); u32(1); u16(1); u16(0); u16(0x011A); u16(5); u32(1); u32(86); u16(0x011B); u16(5); u32(1); u32(94);
-            u16(0x0128); u16(3); u32(1); u16(2); u16(0); u16(0x0213); u16(3); u32(1); u16(1); u16(0); u16(0x8769); u16(4); u32(1); u32(102); u32(0);
-            u32(72); u32(1); u32(72); u32(1); u16(6); u16(0x9000); u16(7); u32(4); [0x30, 0x32, 0x33, 0x30].forEach(b => out[o++] = b);
-            u16(0x9101); u16(7); u32(4); [1, 2, 3, 0].forEach(b => out[o++] = b); u16(0xA000); u16(7); u32(4); [0x30, 0x31, 0x30, 0x30].forEach(b => out[o++] = b);
-            u16(0xA001); u16(3); u32(1); u16(1); u16(0); u16(0xA002); u16(4); u32(1); u32(w); u16(0xA003); u16(4); u32(1); u32(h); u32(0);
+        // ---- MPO build options (turn flags off to test variants on picky viewers) ----
+        const MPO_OPTS = {
+            disparityType: true,   // image type codes = Multi-frame "Disparity" (0x020002), the code used by 3D cameras
+            attrIFD: true,         // write the MP Attribute IFD in BOTH images (image 1 too, as CIPA DC-007 expects)
+            geometry: true,        // BaseViewpointNum / ConvergenceAngle / BaselineLength tags
+            quality: 0.95,         // JPEG quality used when the images must be re-encoded
+            baselineMm: 65,        // stereo baseline length in millimetres
+            make: '3dtoolad v1.2',
+            model: 'Stereoscopic 3D',
+            software: '3dtoolad v1.2'
+        };
+
+        // Generic little-endian TIFF IFD writer.
+        // entries: {tag, type, v}  type: 1 BYTE, 2 ASCII (string), 3 SHORT, 4 LONG, 5 RATIONAL [[n,d]], 7 UNDEFINED (bytes), 10 SRATIONAL [[n,d]]
+        // 'start' = offset of this IFD from the TIFF header; values > 4 bytes go right after the IFD.
+        function tiffIfd(entries, start, nextIfd) {
+            const TS = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 10: 8 };
+            const list = entries.slice().sort((a, b) => a.tag - b.tag).map(e => {
+                let v = e.v;
+                if (e.type === 2) { v = Array.from(v).map(c => c.charCodeAt(0) & 0x7F); v.push(0); }
+                else if (typeof v === 'number') v = [v];
+                const count = v.length;
+                const bytes = new Uint8Array(count * TS[e.type]); const dv = new DataView(bytes.buffer);
+                v.forEach((x, i) => {
+                    if (e.type === 3) dv.setUint16(i * 2, x, true);
+                    else if (e.type === 4) dv.setUint32(i * 4, x >>> 0, true);
+                    else if (e.type === 5) { dv.setUint32(i * 8, x[0] >>> 0, true); dv.setUint32(i * 8 + 4, x[1] >>> 0, true); }
+                    else if (e.type === 10) { dv.setInt32(i * 8, x[0], true); dv.setInt32(i * 8 + 4, x[1], true); }
+                    else bytes[i] = x;
+                });
+                return { tag: e.tag, type: e.type, count, bytes };
+            });
+            const ifdLen = 2 + 12 * list.length + 4;
+            let dataLen = 0; list.forEach(e => { if (e.bytes.length > 4) dataLen += e.bytes.length + (e.bytes.length & 1); });
+            const out = new Uint8Array(ifdLen + dataLen); const dv = new DataView(out.buffer);
+            dv.setUint16(0, list.length, true);
+            let dp = ifdLen;
+            list.forEach((e, i) => {
+                const p = 2 + i * 12;
+                dv.setUint16(p, e.tag, true); dv.setUint16(p + 2, e.type, true); dv.setUint32(p + 4, e.count, true);
+                if (e.bytes.length <= 4) out.set(e.bytes, p + 8);
+                else { dv.setUint32(p + 8, start + dp, true); out.set(e.bytes, dp); dp += e.bytes.length + (e.bytes.length & 1); }
+            });
+            dv.setUint32(2 + 12 * list.length, nextIfd || 0, true);
             return out;
         }
 
-        function buildMpfSegment(entries, isIndex, size1, size2, offset2) {
-            const n = isIndex ? 3 : 2; const total = isIndex ? 90 : 46;
-            const out = new Uint8Array(total); const dv = new DataView(out.buffer); let o = 0;
-            const u16 = v => { dv.setUint16(o, v, true); o += 2; }, u32 = v => { dv.setUint32(o, v, true); o += 4; };
-            dv.setUint16(o, 0xFFE2, false); o += 2; dv.setUint16(o, total - 2, false); o += 2;
-            [0x4D, 0x50, 0x46, 0x00, 0x49, 0x49, 0x2A, 0x00].forEach(b => out[o++] = b);
-            u32(8); u16(n); u16(0xB000); u16(7); u32(4); [0x30, 0x31, 0x30, 0x30].forEach(b => out[o++] = b);
-            if (isIndex) {
-                u16(0xB001); u16(4); u32(1); u32(2); u16(0xB002); u16(7); u32(32); u32(50); u32(0);
-                u32(0x20030000); u32(size1); u32(0); u16(0); u16(0); u32(0x00000000); u32(size2); u32(offset2); u16(0); u16(0);
-            } else {
-                u16(0xB101); u16(4); u32(1); u32(2); u32(0);
-            }
+        function tiffSegment(marker, prefix, ifdBytes) {
+            // marker(2) + length(2) + prefix + TIFF header(8) + IFD data
+            const len = 2 + prefix.length + 8 + ifdBytes.length;
+            const out = new Uint8Array(2 + len); const dv = new DataView(out.buffer);
+            dv.setUint16(0, marker, false); dv.setUint16(2, len, false);
+            out.set(prefix, 4);
+            const t = 4 + prefix.length;
+            out.set([0x49, 0x49, 0x2A, 0x00], t); dv.setUint32(t + 4, 8, true);
+            out.set(ifdBytes, t + 8);
             return out;
+        }
+
+        function buildExifSegment(w, h) {
+            const d = new Date(), p2 = n => String(n).padStart(2, '0');
+            const stamp = `${d.getFullYear()}:${p2(d.getMonth() + 1)}:${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+            const ifd0 = ptr => tiffIfd([
+                { tag: 0x010F, type: 2, v: MPO_OPTS.make },
+                { tag: 0x0110, type: 2, v: MPO_OPTS.model },
+                { tag: 0x0112, type: 3, v: 1 },
+                { tag: 0x011A, type: 5, v: [[72, 1]] },
+                { tag: 0x011B, type: 5, v: [[72, 1]] },
+                { tag: 0x0128, type: 3, v: 2 },
+                { tag: 0x0131, type: 2, v: MPO_OPTS.software },
+                { tag: 0x0132, type: 2, v: stamp },
+                { tag: 0x0213, type: 3, v: 1 },
+                { tag: 0x8769, type: 4, v: ptr }
+            ], 8, 0);
+            const exifStart = 8 + ifd0(0).length;
+            const ifd0b = ifd0(exifStart);
+            const exifIfd = tiffIfd([
+                { tag: 0x9000, type: 7, v: [0x30, 0x32, 0x33, 0x30] },
+                { tag: 0x9003, type: 2, v: stamp },
+                { tag: 0x9004, type: 2, v: stamp },
+                { tag: 0x9101, type: 7, v: [1, 2, 3, 0] },
+                { tag: 0xA000, type: 7, v: [0x30, 0x31, 0x30, 0x30] },
+                { tag: 0xA001, type: 3, v: 1 },
+                { tag: 0xA002, type: 4, v: w },
+                { tag: 0xA003, type: 4, v: h }
+            ], exifStart, 0);
+            const all = new Uint8Array(ifd0b.length + exifIfd.length); all.set(ifd0b, 0); all.set(exifIfd, ifd0b.length);
+            return tiffSegment(0xFFE1, [0x45, 0x78, 0x69, 0x66, 0, 0], all);
+        }
+
+        // MP Attribute IFD (one per image). num = this image's 1-based number.
+        function mpAttrIfd(num, start, next) {
+            const e = [
+                { tag: 0xB000, type: 7, v: [0x30, 0x31, 0x30, 0x30] },
+                { tag: 0xB101, type: 4, v: num }
+            ];
+            if (MPO_OPTS.geometry) {
+                e.push({ tag: 0xB204, type: 4, v: 1 });                                   // Base viewpoint = image 1
+                e.push({ tag: 0xB205, type: 10, v: [[0, 1]] });                           // Convergence angle (parallel)
+                e.push({ tag: 0xB206, type: 5, v: [[Math.round(MPO_OPTS.baselineMm * 1000), 1000]] }); // Baseline (mm)
+            }
+            return tiffIfd(e, start, next);
+        }
+
+        const MPF_SIG = [0x4D, 0x50, 0x46, 0x00];
+
+        // First image: Index IFD (+ Attribute IFD). Other images: Attribute IFD only.
+        function buildMpfSegment(isIndex, num, size1, size2, offset2) {
+            if (!isIndex) return tiffSegment(0xFFE2, MPF_SIG, mpAttrIfd(num, 8, 0));
+            const D = MPO_OPTS.disparityType;
+            const ent = new Uint8Array(32); const ev = new DataView(ent.buffer);
+            ev.setUint32(0, D ? 0x20020002 : 0x20030000, true); ev.setUint32(4, size1, true); ev.setUint32(8, 0, true);
+            ev.setUint32(16, D ? 0x00020002 : 0x00000000, true); ev.setUint32(20, size2, true); ev.setUint32(24, offset2, true);
+            const index = next => tiffIfd([
+                { tag: 0xB000, type: 7, v: [0x30, 0x31, 0x30, 0x30] },
+                { tag: 0xB001, type: 4, v: 2 },
+                { tag: 0xB002, type: 7, v: Array.from(ent) }
+            ], 8, next);
+            if (!MPO_OPTS.attrIFD) return tiffSegment(0xFFE2, MPF_SIG, index(0));
+            const attrStart = 8 + index(0).length;
+            const idx = index(attrStart), at = mpAttrIfd(1, attrStart, 0);
+            const all = new Uint8Array(idx.length + at.length); all.set(idx, 0); all.set(at, idx.length);
+            return tiffSegment(0xFFE2, MPF_SIG, all);
         }
 
         function createMPOBuffer(jpeg1, jpeg2) {
             const a = splitJpeg(jpeg1), b = splitJpeg(jpeg2);
             const exif1 = buildExifSegment(a.w, a.h), exif2 = buildExifSegment(b.w, b.h);
             const bodyLen = x => x.segs.reduce((t, s) => t + s.length, 0) + x.scan.length;
-            const mpf2 = buildMpfSegment(null, false);
-            const size1 = 2 + exif1.length + 90 + bodyLen(a);
+            const mpf2 = buildMpfSegment(false, 2);
+            const mpf1Len = buildMpfSegment(true, 1, 0, 0, 0).length; // length does not depend on the values
+            const size1 = 2 + exif1.length + mpf1Len + bodyLen(a);
             const size2 = 2 + exif2.length + mpf2.length + bodyLen(b);
-            const mpfIIPos = 2 + exif1.length + 8;
-            const mpf1 = buildMpfSegment(null, true, size1, size2, size1 - mpfIIPos);
+            const mpfTiffPos = 2 + exif1.length + 8;               // offsets are relative to the "II*\0" header
+            const mpf1 = buildMpfSegment(true, 1, size1, size2, size1 - mpfTiffPos);
             const out = new Uint8Array(size1 + size2); let o = 0;
             const put = arr => { out.set(arr, o); o += arr.length; };
             [[exif1, mpf1, a], [exif2, mpf2, b]].forEach(([ex, mpf, x]) => {
@@ -1276,23 +1645,21 @@
             return out.buffer;
         }
 
-        document.getElementById('btnExportMPO').addEventListener('click', async () => {
-            if (!imagesLoaded) return;
-            const btn = document.getElementById('btnExportMPO'); btn.disabled = true; btn.innerText = "Generating MPO...";
-            try {
-                const al = getAlignedFrames();
-                const [jpeg1Raw, jpeg2Raw] = await Promise.all([canvasToJpegBuffer(al.L), canvasToJpegBuffer(al.R)]);
-                const end1 = findTrueEndOfJpeg(jpeg1Raw); const end2 = findTrueEndOfJpeg(jpeg2Raw);
-                const mpoBuffer = createMPOBuffer(jpeg1Raw.slice(0, end1), jpeg2Raw.slice(0, end2));
-                const blob = new Blob([mpoBuffer], { type: 'image/mpo' }); const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'stereoscopic_3d.mpo'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+        document.getElementById('btnExportMPO').addEventListener('click', (e) => {
+            withBusy(e.currentTarget, 'Generating MPO...', 'MPO', async () => {
+                const c = getCropRect(false); let j1, j2;
+                if (!c.fallback && c.dx === 0 && c.dy === 0 && origL && origR) { j1 = origL; j2 = origR; }   // lossless: original JPEG bytes
+                else { const al = getAlignedFrames(false); [j1, j2] = await Promise.all([canvasToJpegBuffer(al.L), canvasToJpegBuffer(al.R)]); }
+                const e1 = findJpegEnd(j1, 0), e2 = findJpegEnd(j2, 0);
+                const mpo = createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2);
+                await saveBlob(new Blob([mpo], { type: 'image/mpo' }), `stereoscopic_3d_${stamp()}.mpo`);
                 showToast("MPO Image saved successfully!");
-            } catch (e) { showToast("Error exporting MPO.", true); } finally { btn.disabled = false; btn.innerText = "Save as MPO (M)"; }
+            });
         });
 
         // --- KEYBOARD SHORTCUTS CONTROLLER ---
         document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
             if (document.activeElement && document.activeElement.tagName === 'SELECT') return;
 
             const key = e.key.toLowerCase();
@@ -1332,9 +1699,11 @@
                     e.preventDefault();
                     document.getElementById('btnExportSBS').click();
                 }
-                if (key === 'x') {
+                if (key === 'x' && !busy && confirm('Discard this project and start over?')) {
                     document.getElementById('btnClear').click();
                 }
+                if (key === 'e') swapLR();
+                if (key === 'n') autoAlign();
                 if (key === 'w') document.querySelector('.view-tab[data-target="wiggle"]').click();
                 if (key === 'a') document.querySelector('.view-tab[data-target="anaglyph"]').click();
                 if (key === 'm') document.getElementById('btnExportMPO').click();
@@ -1343,6 +1712,9 @@
                 if (key === 'p') document.getElementById('btnExportAnaglyph').click();
             }
         });
+
+        // stop Space from also "clicking" a focused button after the shortcut already handled it
+        document.addEventListener('keyup', (e) => { if (e.key === ' ' && screenEditor.classList.contains('active')) e.preventDefault(); });
 
     </script>
 </body>
