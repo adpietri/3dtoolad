@@ -20,7 +20,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3dToolAD 1.2</title>
+    <title>3DToolAD 1.4</title>
     <style>
         /* === DARK THEME (DEFAULT) === */
         :root {
@@ -285,7 +285,7 @@
     <!-- Top Navbar -->
     <div class="navbar">
         <div class="navbar-brand">
-            3DToolAD v1.2 (Beta)
+            3DToolAD v1.4 (Beta)
         </div>
         <div class="top-actions">
             <button id="btnTheme" title="Toggle Light/Dark Theme (D)">
@@ -911,7 +911,7 @@
             const lim = parseInt(alignX.max);
             offsetX = Math.max(-lim, Math.min(lim, Math.round(x))); offsetY = Math.max(-lim, Math.min(lim, Math.round(y)));
             alignX.value = offsetX; alignY.value = offsetY; valX.innerText = offsetX; valY.innerText = offsetY;
-            refreshView();
+            if (isAligning) endAlignment(); else refreshView();   // leave the ghost view and resume the animation
         }
 
         function refreshView() {
@@ -993,6 +993,7 @@
         }
 
         btnPlayPause.addEventListener('click', () => {
+            if (isAligning) { wasPlayingBeforeAlign = true; endAlignment(); return; }   // Play while in ghost view: resume
             isPlaying = !isPlaying; updatePlayButtonIcon();
             if (isPlaying && currentTab === 'wiggle') {
                 lastSwapTime = performance.now(); if (!animationId) animationId = requestAnimationFrame(renderWiggleLoop);
@@ -1509,9 +1510,9 @@
             geometry: true,        // BaseViewpointNum / ConvergenceAngle / BaselineLength tags
             quality: 0.95,         // JPEG quality used when the images must be re-encoded
             baselineMm: 65,        // stereo baseline length in millimetres
-            make: '3dtoolad v1.2',
+            make: '3DtoolAD v1.4',
             model: 'Stereoscopic 3D',
-            software: '3dtoolad v1.2'
+            software: '3DtoolAD v1.4'
         };
 
         // Generic little-endian TIFF IFD writer.
