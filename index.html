@@ -20,7 +20,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3DToolAD 1.4</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob: data:; media-src blob:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>3DtoolAd 2.0</title>
     <style>
         /* === DARK THEME (DEFAULT) === */
         :root {
@@ -285,7 +286,7 @@
     <!-- Top Navbar -->
     <div class="navbar">
         <div class="navbar-brand">
-            3DToolAD v1.4 (Beta)
+            3DToolAD v2.0 (Beta)
         </div>
         <div class="top-actions">
             <button id="btnTheme" title="Toggle Light/Dark Theme (D)">
@@ -315,6 +316,8 @@
                 </select>
             </div>
             <p style="margin: 14px 0 0; font-size: 0.8rem;">You can also drag &amp; drop one file (MPO / SBS) or two photos (left, right).</p>
+            <button type="button" class="btn btn-outline" id="btnBatch" style="margin-top: 12px; padding: 8px 14px;">Batch convert...</button>
+            <input type="file" id="inputBatch" accept=".mpo,image/*" multiple style="display: none;">
             
             <div style="margin: 30px 0; color: var(--panel-border); display: flex; align-items: center; justify-content: center; gap: 10px;">
                 <span style="flex: 1; height: 1px; background: var(--panel-border);"></span>
@@ -360,10 +363,39 @@
                     <label>Y-Axis (Vertical) <span id="valY" style="color:var(--primary); font-weight: bold;">0</span></label>
                     <input type="range" id="alignY" min="-200" max="200" value="0">
                 </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Rotation (right image) <span id="valRot">0.00</span>&deg;</label>
+                    <input type="range" id="alignRot" min="-5" max="5" step="0.05" value="0">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Scale (right image) <span id="valScale">100</span>%</label>
+                    <input type="range" id="alignScale" min="95" max="105" step="0.05" value="100">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Alignment View</label>
+                    <select id="alignView">
+                        <option value="ghost" selected>Ghost (50% overlay)</option>
+                        <option value="diff">Difference (dark = aligned)</option>
+                        <option value="checker">Checkerboard</option>
+                        <option value="guides">Ghost + horizontal guides</option>
+                    </select>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Crop Aspect Ratio</label>
+                    <select id="cropAspect">
+                        <option value="free" selected>Free (largest common area)</option>
+                        <option value="16:9">16:9</option><option value="3:2">3:2</option><option value="4:3">4:3</option>
+                        <option value="1:1">1:1</option><option value="4:5">4:5</option><option value="9:16">9:16</option>
+                    </select>
+                </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
                     <button type="button" class="btn btn-outline" id="btnAutoAlign" style="flex: 1; padding: 10px;" title="Auto-align (N)">Auto-align (N)</button>
+                    <button type="button" class="btn btn-outline" id="btnAutoAlignV" style="flex: 1; padding: 10px;" title="Fix only the vertical offset (keeps your horizontal setting)">Vertical only</button>
                     <button type="button" class="btn btn-outline" id="btnResetAlign" style="flex: 1; padding: 10px;">Reset</button>
                     <button type="button" class="btn btn-outline" id="btnSwapLR" style="flex: 1 1 100%; padding: 10px;" title="Swap left/right (E)">Swap L/R (E)</button>
+                    <button type="button" class="btn btn-outline" id="btnMatchColors" style="flex: 1; padding: 10px;" title="Match the right image's colors to the left (press again to undo)">Match colors</button>
+                    <button type="button" class="btn btn-outline" id="btnComfort" style="flex: 1; padding: 10px;" title="Estimate the 3D disparity range">3D comfort</button>
+                    <div id="parallaxInfo" style="flex: 1 1 100%; font-size: 0.78rem; color: var(--text-muted);"></div>
                 </div>
             </div>
 
@@ -428,6 +460,7 @@
                         Save as SBS (S)
                     </button>
                     <button type="button" class="btn btn-outline" id="btnExportMPO">Save as MPO (M)</button>
+                    <button type="button" class="btn btn-outline" id="btnInspect" style="display: none;">Inspect MPO data</button>
                     
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Static Render</div>
                     <button type="button" class="btn btn-outline" id="btnExportAnaglyph">Save Anaglyph PNG (P)</button>
@@ -457,6 +490,10 @@
                         <option value="half-sbs-ana">Half Side-by-Side (Anamorphic - TV / 3D players)</option>
                         <option value="half-tb-ana">Half Top-Bottom (Anamorphic - TV / 3D players)</option>
                         <option value="crosseye">Cross-Eyed (Swapped L/R)</option>
+                        <option value="row-int">Row-interlaced (passive 3D monitors)</option>
+                        <option value="col-int">Column-interlaced</option>
+                        <option value="checker-int">Checkerboard-interlaced</option>
+                        <option value="vr">VR / Cardboard (SBS, square cells)</option>
                     </select>
                 </div>
                 
@@ -505,7 +542,12 @@
         let pvL = null, pvR = null, pvScale = 1;      // reduced-resolution copies used by the live views
         let origL = null, origR = null;               // original JPEG bytes (lossless MPO pass-through)
         let fileL = null, fileR = null;               // separate uploads
+        let rotDeg = 0, scaleK = 1;                   // rotation (deg) and scale applied to the right image
+        let openedMpoFile = null;                     // the file currently open, only when it is a real MPO
         let busy = false;                             // an export is running
+        let cancelReq = false, abortGif = null;       // Esc cancels GIF / video
+        let exifBuf = null;                           // first source JPEG (camera EXIF is copied from it)
+        let colorBackup = null;                       // for undoing 'Match colors'
         let sbsAl = null;                             // aligned frames cached while the SBS modal is open
         const PREVIEW_MAX = 1600;
         let imagesLoaded = false;
@@ -613,10 +655,10 @@
             if (animationId) cancelAnimationFrame(animationId);
             animationId = null;
 
-            frameL = null; frameR = null; pvL = null; pvR = null; origL = null; origR = null; sbsAl = null;
-            fileL = null; fileR = null;
+            frameL = null; frameR = null; pvL = null; pvR = null; origL = null; origR = null; sbsAl = null; exifBuf = null; colorBackup = null;
+            fileL = null; fileR = null; openedMpoFile = null; updateInspectBtn();
 
-            offsetX = 0; offsetY = 0;
+            offsetX = 0; offsetY = 0; resetRS();
             alignX.value = 0; alignY.value = 0;
             valX.innerText = "0"; valY.innerText = "0";
             toggleAdvanced.checked = false;
@@ -637,7 +679,7 @@
         }
 
         function onImagesReady() {
-            imagesLoaded = true;
+            imagesLoaded = true; updateInspectBtn();
             screenUpload.classList.remove('active');
             screenEditor.classList.add('active');
             btnClear.style.display = 'block';
@@ -747,7 +789,9 @@
             let b = -1, end = buffer.byteLength;
             const mp = readMpfOffsets(buffer);
             if (mp && mp.length >= 2 && mp[1].offset > 0 && v[mp[1].offset] === 0xFF && v[mp[1].offset + 1] === 0xD8) {
-                b = mp[1].offset; if (mp[1].size > 0) end = Math.min(end, b + mp[1].size);
+                b = mp[1].offset;
+                const real = findJpegEnd(buffer, b);   // trust the real JPEG end: some apps (e.g. Photos) rewrite metadata and leave the MPF size stale
+                end = real > 0 ? real : (mp[1].size > 0 ? Math.min(end, b + mp[1].size) : end);
             }
             if (b < 0) b = findSecondImageOffset(buffer);
             if (b <= 0) throw new Error("Could not split MPO.");
@@ -785,12 +829,13 @@
         function setAlignRange() {
             const lim = Math.max(200, Math.round(Math.max(frameL.width, frameL.height) * 0.1));
             [alignX, alignY].forEach(s => { s.min = -lim; s.max = lim; s.value = 0; });
-            offsetX = 0; offsetY = 0; valX.innerText = "0"; valY.innerText = "0";
+            offsetX = 0; offsetY = 0; valX.innerText = "0"; valY.innerText = "0"; resetRS();
         }
 
-        function finishFrames() { buildPreview(); setAlignRange(); isAligning = false; }
+        function finishFrames() { if (typeof view !== 'undefined') { view.z = 1; applyView(); } colorBackup = null; buildPreview(); setAlignRange(); isAligning = false; }
 
         function setFrames(imgL, imgR, rawL, rawR) {
+            exifBuf = rawL || null;
             const w = imgL.width, h = imgL.height;
             frameL = mkCanvas(w, h); frameR = mkCanvas(w, h);
             frameL.getContext('2d').drawImage(imgL, 0, 0); coverDraw(frameR.getContext('2d'), imgR, w, h);
@@ -807,18 +852,19 @@
             frameL = mkCanvas(w, h); frameR = mkCanvas(w, h);
             frameL.getContext('2d').drawImage(img, sa[0], sa[1], w, h, 0, 0, w, h);
             frameR.getContext('2d').drawImage(img, sb[0], sb[1], w, h, 0, 0, w, h);
-            origL = origR = null; finishFrames();
+            origL = origR = exifBuf = null; finishFrames();
         }
 
         // --- INPUT HANDLING (file pickers + drag & drop) ---
         async function loadSingleFile(file) {
+            openedMpoFile = null;
             try {
                 const isMpoExt = /\.mpo$/i.test(file.name); let handled = false;
                 if (isMpoExt || await looksLikeMPO(file)) {
                     try {
                         const [b1, b2] = await parseMPO(file);
                         const [i1, i2] = await Promise.all([imgFromBuffer(b1), imgFromBuffer(b2)]);
-                        if (isMpoExt || (i1.width === i2.width && i1.height === i2.height)) { setFrames(i1, i2, b1, b2); handled = true; }
+                        if (isMpoExt || (i1.width === i2.width && i1.height === i2.height)) { setFrames(i1, i2, b1, b2); handled = true; openedMpoFile = file; }
                     } catch (mpoErr) { if (isMpoExt) throw mpoErr; }
                 }
                 if (!handled) {
@@ -837,6 +883,7 @@
 
         async function checkSeparateUploads() {
             if (!fileL || !fileR) return;
+            openedMpoFile = null;
             try {
                 const uL = URL.createObjectURL(fileL), uR = URL.createObjectURL(fileR); let iL, iR;
                 try { [iL, iR] = await Promise.all([loadImageAsync(uL), loadImageAsync(uR)]); }
@@ -875,14 +922,40 @@
             else { endAlignment(); if (offsetX || offsetY) showToast(`Alignment kept (X ${offsetX}, Y ${offsetY}). Use Reset to clear.`); }
         });
 
+        // Right image placed with offset + rotation + scale around its centre (src-sized coordinate space).
+        function placeR(ctx, src, ox, oy) {
+            const w = src.width, h = src.height;
+            ctx.translate(w / 2 + ox, h / 2 + oy); ctx.rotate(rotDeg * Math.PI / 180); ctx.scale(scaleK, scaleK); ctx.drawImage(src, -w / 2, -h / 2, w, h);
+        }
+        function drawRGhost(ctx, ox, oy) { ctx.save(); placeR(ctx, pvR, ox, oy); ctx.restore(); }
+        function syncRS() {
+            const r = document.getElementById('alignRot'), k = document.getElementById('alignScale');
+            r.value = rotDeg; k.value = scaleK * 100; document.getElementById('valRot').textContent = rotDeg.toFixed(2); document.getElementById('valScale').textContent = (scaleK * 100).toFixed(2);
+        }
+        function resetRS() { rotDeg = 0; scaleK = 1; syncRS(); }
         function renderGhosting() {
             if (!imagesLoaded) return;
-            const w = pvL.width, h = pvL.height;
+            const w = pvL.width, h = pvL.height, view = document.getElementById('alignView').value;
             const canvas = currentTab === 'wiggle' ? wiggleCanvas : anaglyphCanvas; const ctx = currentTab === 'wiggle' ? wiggleCtx : anaglyphCtx;
             if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-            ctx.globalAlpha = 1.0; ctx.clearRect(0, 0, w, h); ctx.drawImage(pvL, 0, 0, w, h);
-            ctx.globalAlpha = 0.5; ctx.drawImage(pvR, offsetX * pvScale, offsetY * pvScale, w, h);
-            ctx.globalAlpha = 1.0;
+            const ox = offsetX * pvScale, oy = offsetY * pvScale;
+            ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, w, h); ctx.drawImage(pvL, 0, 0, w, h);
+            if (view === 'diff') {
+                ctx.globalCompositeOperation = 'difference'; drawRGhost(ctx, ox, oy); ctx.globalCompositeOperation = 'source-over';
+            } else if (view === 'checker') {
+                const t = Math.max(24, Math.round(Math.min(w, h) / 10));
+                for (let j = 0; j * t < h; j++) for (let i = 0; i * t < w; i++) {
+                    if ((i + j) % 2) continue;
+                    ctx.save(); ctx.beginPath(); ctx.rect(i * t, j * t, t, t); ctx.clip(); drawRGhost(ctx, ox, oy); ctx.restore();
+                }
+            } else {
+                ctx.globalAlpha = 0.5; drawRGhost(ctx, ox, oy); ctx.globalAlpha = 1.0;
+                if (view === 'guides') {
+                    ctx.strokeStyle = 'rgba(0,255,255,0.8)'; ctx.lineWidth = Math.max(1, w / 1200); ctx.beginPath();
+                    for (let k = 1; k < 8; k++) { const y = Math.round(h * k / 8) + 0.5; ctx.moveTo(0, y); ctx.lineTo(w, y); }
+                    ctx.stroke();
+                }
+            }
         }
 
         function startAlignment() {
@@ -921,17 +994,18 @@
             else generateAnaglyph();
         }
 
-        document.getElementById('btnResetAlign').addEventListener('click', () => setOffsets(0, 0));
+        document.getElementById('btnResetAlign').addEventListener('click', () => { resetRS(); setOffsets(0, 0); });
 
         function swapLR() {
             if (!imagesLoaded) return;
-            [frameL, frameR] = [frameR, frameL]; [pvL, pvR] = [pvR, pvL]; [origL, origR] = [origR, origL];
+            rotDeg = -rotDeg; scaleK = 1 / scaleK; syncRS();
+            colorBackup = null; [frameL, frameR] = [frameR, frameL]; [pvL, pvR] = [pvR, pvL]; [origL, origR] = [origR, origL];
             setOffsets(-offsetX, -offsetY); showToast("Left and right swapped.");
         }
         document.getElementById('btnSwapLR').addEventListener('click', swapLR);
 
         // Auto-align: coarse-to-fine search that minimises the luminance difference (aligns the dominant subject).
-        function autoAlign() {
+        function autoAlign(vOnly) {
             if (!imagesLoaded) return;
             const fw = frameL.width, fh = frameL.height;
             const gray = (src, w, h) => {
@@ -957,13 +1031,14 @@
             showToast("Auto-aligning…");
             setTimeout(() => {
                 try {
-                    let r = search(256, 0, 0, 38, 20);
-                    const tw = Math.min(fw, 1024); if (tw > 256) r = search(tw, r.x, r.y, Math.ceil(tw / 256) + 2, Math.ceil(tw / 256) + 2);
-                    setOffsets(r.x, r.y); showToast(`Auto-aligned (X ${offsetX}, Y ${offsetY}).`);
+                    let r = search(256, vOnly ? offsetX : 0, 0, vOnly ? 0 : 38, 20);
+                    const tw = Math.min(fw, 1024); if (tw > 256) r = search(tw, r.x, r.y, vOnly ? 0 : Math.ceil(tw / 256) + 2, Math.ceil(tw / 256) + 2);
+                    setOffsets(vOnly ? offsetX : r.x, r.y); showToast(`Auto-aligned (X ${offsetX}, Y ${offsetY}).`);
                 } catch (e) { console.error(e); showToast("Auto-align failed.", true); }
             }, 30);
         }
-        document.getElementById('btnAutoAlign').addEventListener('click', autoAlign);
+        document.getElementById('btnAutoAlign').addEventListener('click', () => autoAlign(false));
+        document.getElementById('btnAutoAlignV').addEventListener('click', () => autoAlign(true));
 
         // --- ANIMATION ---
         function renderWiggleLoop(timestamp) {
@@ -1006,20 +1081,36 @@
         });
 
         // pv=true works on the reduced preview frames (offsets scaled to match); pv=false on full resolution.
+        function cropRatio() {
+            const v = document.getElementById('cropAspect').value; if (v === 'free') return 0;
+            const [x, y] = v.split(':').map(Number); return x / y;
+        }
         function getCropRect(pv) {
             const F = pv ? pvL : frameL, k = pv ? pvScale : 1; const w = F.width, h = F.height;
             const dx = Math.round(offsetX * k) || 0, dy = Math.round(offsetY * k) || 0;
-            const cw = w - Math.abs(dx), ch = h - Math.abs(dy);
+            let cw = w - Math.abs(dx), ch = h - Math.abs(dy);
             if (cw < 2 || ch < 2) return { x0: 0, y0: 0, w, h, dx, dy, fallback: true };
-            return { x0: Math.max(0, dx), y0: Math.max(0, dy), w: cw, h: ch, dx, dy, fallback: false };
+            let x0 = Math.max(0, dx), y0 = Math.max(0, dy); const ar = cropRatio();
+            if (ar) {   // centred crop to the chosen aspect ratio inside the common area
+                let nw = cw, nh = Math.round(cw / ar); if (nh > ch) { nh = ch; nw = Math.round(ch * ar); }
+                if (nw >= 2 && nh >= 2) { x0 += (cw - nw) >> 1; y0 += (ch - nh) >> 1; cw = nw; ch = nh; }
+            }
+            if (rotDeg || scaleK !== 1) {   // shrink the crop until it lies fully inside the rotated/scaled right image
+                const th = rotDeg * Math.PI / 180, co = Math.cos(th), si = Math.sin(th), A = w * scaleK / 2, B = h * scaleK / 2, rx = w / 2 + dx, ry = h / 2 + dy;
+                for (let t = 1; t > 0.4; t -= 0.01) {
+                    const nw = cw * t, nh = ch * t, ax = x0 + (cw - nw) / 2, ay = y0 + (ch - nh) / 2; let ok = true;
+                    for (const [px, py] of [[ax, ay], [ax + nw, ay], [ax, ay + nh], [ax + nw, ay + nh]]) { const X = px - rx, Y = py - ry; if (Math.abs(X * co + Y * si) > A || Math.abs(-X * si + Y * co) > B) { ok = false; break; } }
+                    if (ok) { x0 = Math.round(ax); y0 = Math.round(ay); cw = Math.max(2, Math.round(nw)); ch = Math.max(2, Math.round(nh)); break; }
+                }
+            }
+            return { x0, y0, w: cw, h: ch, dx, dy, fallback: false };
         }
 
         function drawAligned(ctx, which, dw, dh, c, pv) {
             const sL = pv ? pvL : frameL, sR = pv ? pvR : frameR;
             c = c || getCropRect(pv);
             if (which === 'L') { ctx.drawImage(sL, c.x0, c.y0, c.w, c.h, 0, 0, dw, dh); return; }
-            if (c.fallback) ctx.drawImage(sR, c.dx * dw / c.w, c.dy * dh / c.h, dw, dh);
-            else ctx.drawImage(sR, c.x0 - c.dx, c.y0 - c.dy, c.w, c.h, 0, 0, dw, dh);
+            ctx.save(); ctx.scale(dw / c.w, dh / c.h); ctx.translate(-c.x0, -c.y0); placeR(ctx, sR, c.dx, c.dy); ctx.restore();
         }
 
         function getAlignedFrames(pv) {
@@ -1191,6 +1282,20 @@
             let img1 = al.L, img2 = al.R;
             if (mode === 'crosseye') { img1 = al.R; img2 = al.L; }
 
+            if (mode === 'row-int' || mode === 'col-int' || mode === 'checker-int' || mode === 'vr') {
+                const cx = sbsPreviewCtx;
+                if (mode === 'vr') {   // each eye letterboxed in a w x w cell
+                    sbsPreviewCanvas.width = w * 2; sbsPreviewCanvas.height = w; cx.fillStyle = '#000'; cx.fillRect(0, 0, w * 2, w);
+                    const y = Math.round((w - h) / 2); cx.drawImage(al.L, 0, y, w, h); cx.drawImage(al.R, w, y, w, h); return;
+                }
+                sbsPreviewCanvas.width = w; sbsPreviewCanvas.height = h;
+                const dL = al.L.getContext('2d').getImageData(0, 0, w, h), dR = al.R.getContext('2d').getImageData(0, 0, w, h), o = dL.data, r = dR.data;
+                for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i += 4) {
+                    const useR = mode === 'row-int' ? (y & 1) : mode === 'col-int' ? (x & 1) : ((x + y) & 1);
+                    if (useR) { o[i] = r[i]; o[i + 1] = r[i + 1]; o[i + 2] = r[i + 2]; }
+                }
+                cx.putImageData(dL, 0, 0); return;   // left eye on even lines/columns
+            }
             if (mode === 'full-sbs' || mode === 'crosseye') {
                 finalW = w * 2; finalH = h;
                 Rx = w;
@@ -1293,10 +1398,10 @@
 
         async function withBusy(btn, label, what, fn) {
             if (busy || !imagesLoaded) return;
-            busy = true; const old = btn.innerText; btn.disabled = true; btn.innerText = label;
+            busy = true; cancelReq = false; const old = btn.innerText; btn.disabled = true; btn.innerText = label;
             try { await fn(); }
-            catch (e) { console.error(e); showToast(`Error exporting ${what}: ${(e && e.message) || 'unknown error'}`, true); }
-            finally { busy = false; btn.disabled = false; btn.innerText = old; }
+            catch (e) { if (e && e.message === 'cancelled') showToast('Cancelled.'); else { console.error(e); showToast(`Error exporting ${what}: ${(e && e.message) || 'unknown error'}`, true); } }
+            finally { abortGif = null; busy = false; btn.disabled = false; btn.innerText = old; }
         }
 
         // --- EXPORTS ---
@@ -1313,7 +1418,8 @@
             if (!imagesLoaded) return;
             if (currentTab !== 'wiggle') { showToast("Switch to the Wiggle tab to record video.", true); return; }
             if (typeof MediaRecorder === 'undefined') { showToast("This browser cannot record video.", true); return; }
-            withBusy(e.currentTarget, 'Recording...', 'video', async () => {
+            const vbtn = e.currentTarget;
+            withBusy(vbtn, 'Recording... (Esc cancels)', 'video', async () => {
                 const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
                 const cycles = Math.max(1, Math.ceil(3000 / (speed * 2))), duration = cycles * speed * 2;
                 const c = getCropRect(false); let vw = c.w, vh = c.h; const MAXV = 1920;
@@ -1336,9 +1442,10 @@
                 const stopped = new Promise((res, rej) => { rec.onstop = res; rec.onerror = ev => rej((ev && ev.error) || new Error('recorder error')); });
                 draw(0); rec.start(); const t0 = performance.now();
                 try {
-                    await new Promise(res => { const step = now => { const t = Math.max(0, now - t0); if (t >= duration) { res(); return; } draw(t); requestAnimationFrame(step); }; requestAnimationFrame(step); });
+                    await new Promise(res => { const step = now => { const t = Math.max(0, now - t0); if (cancelReq || t >= duration) { res(); return; } vbtn.innerText = `Recording ${Math.round(t / duration * 100)}% (Esc cancels)`; draw(t); requestAnimationFrame(step); }; requestAnimationFrame(step); });
                 } finally { if (rec.state !== 'inactive') rec.stop(); }
                 await stopped; stream.getTracks().forEach(t => t.stop());
+                if (cancelReq) throw new Error('cancelled');
                 const ext = mime.includes('mp4') ? 'mp4' : 'webm';
                 await saveBlob(new Blob(chunks, { type: mime.split(';')[0] }), `wiggle_${stamp()}.${ext}`); showToast(`Video .${ext} saved successfully!`);
             });
@@ -1449,6 +1556,7 @@
                     const src = `self.onmessage=function(e){var d=e.data;try{self.postMessage({parts:(${gifEncodeAll.toString()})(d.frames,d.w,d.h,d.delay)});}catch(err){self.postMessage({error:String(err)});}};`;
                     url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' })); wk = new Worker(url);
                     const done = () => { wk.terminate(); URL.revokeObjectURL(url); };
+                    abortGif = () => { done(); reject(new Error('cancelled')); };
                     wk.onmessage = (ev) => { done(); ev.data.error ? reject(new Error(ev.data.error)) : resolve(ev.data.parts); };
                     wk.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); done(); direct(); };
                     wk.postMessage({ frames, w, h, delay });
@@ -1457,7 +1565,7 @@
         }
 
         document.getElementById('btnExportGIF').addEventListener('click', (e) => {
-            withBusy(e.currentTarget, 'Generating GIF (Wait)...', 'GIF', async () => {
+            withBusy(e.currentTarget, 'Generating GIF... (Esc cancels)', 'GIF', async () => {
                 await nextFrames();
                 const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
                 const framesCount = smooth ? Math.max(2, Math.min(6, Math.floor(speed / 20))) : 1;
@@ -1510,9 +1618,9 @@
             geometry: true,        // BaseViewpointNum / ConvergenceAngle / BaselineLength tags
             quality: 0.95,         // JPEG quality used when the images must be re-encoded
             baselineMm: 65,        // stereo baseline length in millimetres
-            make: '3DtoolAD v1.4',
-            model: 'Stereoscopic 3D',
-            software: '3DtoolAD v1.4'
+            make: '3DtoolAD',
+            model: 'Stereoscopic 3D Image',
+            software: '3DtoolAD v2.0'
         };
 
         // Generic little-endian TIFF IFD writer.
@@ -1562,12 +1670,50 @@
             return out;
         }
 
-        function buildExifSegment(w, h) {
+        // Reads a whitelist of EXIF tags (camera, exposure, lens). GPS is deliberately NOT copied (privacy).
+        function readExifTags(buf) {
+            const out = { ifd0: {}, exif: {} };
+            try {
+                const v = new DataView(buf); let p = 2;
+                while (p + 4 < v.byteLength && v.getUint8(p) === 0xFF) {
+                    const m = v.getUint8(p + 1); if (m === 0xDA) break; const len = v.getUint16(p + 2);
+                    if (m === 0xE1 && v.getUint32(p + 4) === 0x45786966) {
+                        const t = p + 10, le = v.getUint16(t) === 0x4949, g16 = o => v.getUint16(t + o, le), g32 = o => v.getUint32(t + o, le);
+                        const SZ = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1 };
+                        const rd = (ifd, dst, want, ptrOut) => {
+                            const n = g16(ifd);
+                            for (let i = 0; i < n; i++) {
+                                const e = ifd + 2 + i * 12, tag = g16(e), ty = g16(e + 2), c = g32(e + 4);
+                                if (tag === 0x8769 && ptrOut) ptrOut.ptr = g32(e + 8);
+                                if (!want.includes(tag) || !SZ[ty] || c < 1 || c > 64) continue;
+                                const sz = SZ[ty] * c, pos = sz > 4 ? t + g32(e + 8) : t + e + 8; let val;
+                                if (ty === 2) { val = ''; for (let k = 0; k < c - 1; k++) val += String.fromCharCode(v.getUint8(pos + k)); }
+                                else if (ty === 3) { val = []; for (let k = 0; k < c; k++) val.push(v.getUint16(pos + k * 2, le)); }
+                                else if (ty === 4) { val = []; for (let k = 0; k < c; k++) val.push(v.getUint32(pos + k * 4, le)); }
+                                else if (ty === 5) { val = []; for (let k = 0; k < c; k++) val.push([v.getUint32(pos + k * 8, le), v.getUint32(pos + k * 8 + 4, le)]); }
+                                else continue;
+                                dst[tag] = { type: ty, v: val };
+                            }
+                        };
+                        const po = {}; rd(g32(4), out.ifd0, [0x010F, 0x0110], po);
+                        if (po.ptr) rd(po.ptr, out.exif, [0x829A, 0x829D, 0x8827, 0x9003, 0x920A, 0xA434]);
+                        return out;
+                    }
+                    p += 2 + len;
+                }
+            } catch (e) { }
+            return out;
+        }
+
+        function buildExifSegment(w, h, src) {
             const d = new Date(), p2 = n => String(n).padStart(2, '0');
             const stamp = `${d.getFullYear()}:${p2(d.getMonth() + 1)}:${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+            const o = src ? readExifTags(src) : { ifd0: {}, exif: {} };
+            const keep = (map, tag, fb) => map[tag] ? { tag, type: map[tag].type, v: map[tag].v } : fb;
+            const taken = o.exif[0x9003] ? o.exif[0x9003].v : stamp;
             const ifd0 = ptr => tiffIfd([
-                { tag: 0x010F, type: 2, v: MPO_OPTS.make },
-                { tag: 0x0110, type: 2, v: MPO_OPTS.model },
+                keep(o.ifd0, 0x010F, { tag: 0x010F, type: 2, v: MPO_OPTS.make }),
+                keep(o.ifd0, 0x0110, { tag: 0x0110, type: 2, v: MPO_OPTS.model }),
                 { tag: 0x0112, type: 3, v: 1 },
                 { tag: 0x011A, type: 5, v: [[72, 1]] },
                 { tag: 0x011B, type: 5, v: [[72, 1]] },
@@ -1579,16 +1725,18 @@
             ], 8, 0);
             const exifStart = 8 + ifd0(0).length;
             const ifd0b = ifd0(exifStart);
-            const exifIfd = tiffIfd([
+            const ex = [
                 { tag: 0x9000, type: 7, v: [0x30, 0x32, 0x33, 0x30] },
-                { tag: 0x9003, type: 2, v: stamp },
-                { tag: 0x9004, type: 2, v: stamp },
+                { tag: 0x9003, type: 2, v: taken },
+                { tag: 0x9004, type: 2, v: taken },
                 { tag: 0x9101, type: 7, v: [1, 2, 3, 0] },
                 { tag: 0xA000, type: 7, v: [0x30, 0x31, 0x30, 0x30] },
                 { tag: 0xA001, type: 3, v: 1 },
                 { tag: 0xA002, type: 4, v: w },
                 { tag: 0xA003, type: 4, v: h }
-            ], exifStart, 0);
+            ];
+            [0x829A, 0x829D, 0x8827, 0x920A, 0xA434].forEach(t => { if (o.exif[t]) ex.push(keep(o.exif, t)); });
+            const exifIfd = tiffIfd(ex, exifStart, 0);
             const all = new Uint8Array(ifd0b.length + exifIfd.length); all.set(ifd0b, 0); all.set(exifIfd, ifd0b.length);
             return tiffSegment(0xFFE1, [0x45, 0x78, 0x69, 0x66, 0, 0], all);
         }
@@ -1628,9 +1776,9 @@
             return tiffSegment(0xFFE2, MPF_SIG, all);
         }
 
-        function createMPOBuffer(jpeg1, jpeg2) {
+        function createMPOBuffer(jpeg1, jpeg2, exifSrc) {
             const a = splitJpeg(jpeg1), b = splitJpeg(jpeg2);
-            const exif1 = buildExifSegment(a.w, a.h), exif2 = buildExifSegment(b.w, b.h);
+            const exif1 = buildExifSegment(a.w, a.h, exifSrc), exif2 = buildExifSegment(b.w, b.h, exifSrc);
             const bodyLen = x => x.segs.reduce((t, s) => t + s.length, 0) + x.scan.length;
             const mpf2 = buildMpfSegment(false, 2);
             const mpf1Len = buildMpfSegment(true, 1, 0, 0, 0).length; // length does not depend on the values
@@ -1649,10 +1797,10 @@
         document.getElementById('btnExportMPO').addEventListener('click', (e) => {
             withBusy(e.currentTarget, 'Generating MPO...', 'MPO', async () => {
                 const c = getCropRect(false); let j1, j2;
-                if (!c.fallback && c.dx === 0 && c.dy === 0 && origL && origR) { j1 = origL; j2 = origR; }   // lossless: original JPEG bytes
+                if (!c.fallback && rotDeg === 0 && scaleK === 1 && c.w === frameL.width && c.h === frameL.height && c.dx === 0 && c.dy === 0 && origL && origR) { j1 = origL; j2 = origR; }   // lossless: original JPEG bytes
                 else { const al = getAlignedFrames(false); [j1, j2] = await Promise.all([canvasToJpegBuffer(al.L), canvasToJpegBuffer(al.R)]); }
                 const e1 = findJpegEnd(j1, 0), e2 = findJpegEnd(j2, 0);
-                const mpo = createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2);
+                const mpo = createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, exifBuf);
                 await saveBlob(new Blob([mpo], { type: 'image/mpo' }), `stereoscopic_3d_${stamp()}.mpo`);
                 showToast("MPO Image saved successfully!");
             });
@@ -1712,6 +1860,293 @@
                 if (key === 'v') document.getElementById('btnExportVideo').click();
                 if (key === 'p') document.getElementById('btnExportAnaglyph').click();
             }
+        });
+
+        // --- ARROW KEYS: fine alignment (Shift = 10 px) ---
+        let nudgeTimer = null;
+        document.addEventListener('keydown', (e) => {
+            if (!imagesLoaded || busy || sbsModal.classList.contains('active') || e.ctrlKey || e.metaKey || e.altKey) return;
+            const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+            if (!mv || (document.activeElement && (document.activeElement.type === 'range' || document.activeElement.tagName === 'SELECT'))) return;
+            e.preventDefault(); const k = e.shiftKey ? 10 : 1, lim = parseInt(alignX.max);
+            startAlignment();
+            offsetX = Math.max(-lim, Math.min(lim, offsetX + mv[0] * k)); offsetY = Math.max(-lim, Math.min(lim, offsetY + mv[1] * k));
+            alignX.value = offsetX; alignY.value = offsetY; valX.innerText = offsetX; valY.innerText = offsetY; renderGhosting();
+            clearTimeout(nudgeTimer); nudgeTimer = setTimeout(endAlignment, 700);
+        });
+        document.getElementById('alignView').addEventListener('change', () => { if (imagesLoaded) { startAlignment(); renderGhosting(); } });
+
+        // --- DIAGNOSTICS (handy for bug reports) ---
+        function copyDiagnostics() {
+            initGL();
+            const mt = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+            const L = ['3dToolAD 1.2', navigator.userAgent, `Screen ${screen.width}x${screen.height} @${window.devicePixelRatio}x`,
+                'WebGL anaglyph: ' + (GL.ok ? 'yes, max texture ' + GL.maxTex : 'no (CPU fallback)'), 'Web Worker: ' + (typeof Worker !== 'undefined'),
+                'MediaRecorder: ' + (typeof MediaRecorder !== 'undefined' ? mt.map(t => t + '=' + MediaRecorder.isTypeSupported(t)).join(', ') : 'no'),
+                'Share files: ' + !!navigator.canShare];
+            if (imagesLoaded) L.push(`Frames ${frameL.width}x${frameL.height}, preview scale ${pvScale.toFixed(2)}, offset ${offsetX},${offsetY}, lossless MPO: ${!!(origL && origR)}`);
+            const t = L.join('\n');
+            (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => showToast("Diagnostics copied."), () => prompt('Copy diagnostics:', t));
+        }
+        document.addEventListener('keydown', (e) => { if (e.key === 'i' && !e.ctrlKey && !e.metaKey && !e.repeat && !sbsModal.classList.contains('active')) copyDiagnostics(); });
+
+        // --- REMEMBER SETTINGS ---
+        (function () {
+            const ids = ['anaglyphMode', 'speedRange', 'interpolateCheck', 'sbsLayoutMode', 'sbsFormat', 'alignView', 'sbsInputLayout', 'cropAspect'], K = '3dtool-settings'; let st = {};
+            try { st = JSON.parse(localStorage.getItem(K)) || {}; } catch (e) { }
+            ids.forEach(id => {
+                const el = document.getElementById(id); if (!el) return;
+                if (id in st) { if (el.type === 'checkbox') el.checked = st[id]; else el.value = st[id]; el.dispatchEvent(new Event('input')); }
+                el.addEventListener('change', () => { st[id] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(K, JSON.stringify(st)); } catch (e) { } });
+            });
+        })();
+
+        // --- 3D COMFORT (block-matching disparity range) ---
+        function grayData(src, w, h) {
+            const x = mkCanvas(w, h).getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h);
+            const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h); let m = 0;
+            for (let i = 0; i < w * h; i++) { g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; m += g[i]; }
+            m /= w * h; for (let i = 0; i < g.length; i++) g[i] -= m; return g;
+        }
+        function checkComfort() {
+            if (!imagesLoaded) return;
+            const w = 256, s = w / frameL.width, h = Math.max(8, Math.round(frameL.height * s)), A = grayData(frameL, w, h), B = grayData(frameR, w, h);
+            const cx = Math.round(offsetX * s), cy = Math.round(offsetY * s), R = Math.round(w * 0.2), bw = Math.floor(w / 8), bh = Math.floor(h / 6), vals = [];
+            for (let by = 0; by < 6; by++) for (let bx = 0; bx < 8; bx++) {
+                const x0 = bx * bw, y0 = by * bh; let e = 0;
+                for (let y = y0; y < y0 + bh; y++) for (let x = x0; x < x0 + bw; x++) e += A[y * w + x] * A[y * w + x];
+                if (e / (bw * bh) < 80) continue;                       // not enough texture
+                let best = Infinity, bd = 0;
+                for (let dx = cx - R; dx <= cx + R; dx++) {
+                    let sum = 0, n = 0;
+                    for (let y = y0; y < y0 + bh; y += 2) { const yy = y - cy; if (yy < 0 || yy >= h) continue; for (let x = x0; x < x0 + bw; x += 2) { const xx = x - dx; if (xx < 0 || xx >= w) continue; sum += Math.abs(A[y * w + x] - B[yy * w + xx]); n++; } }
+                    if (n > bw * bh / 8) { sum /= n; if (sum < best) { best = sum; bd = dx; } }
+                }
+                if (best < Infinity) vals.push(bd);
+            }
+            const el = document.getElementById('parallaxInfo');
+            if (vals.length < 6) { el.textContent = 'Not enough texture to measure parallax.'; return; }
+            vals.sort((a, b) => a - b);
+            const pct = (vals[Math.ceil(vals.length * 0.95) - 1] - vals[Math.floor(vals.length * 0.05)]) / w * 100;
+            el.textContent = `Disparity range ~${pct.toFixed(1)}% of width: ${pct <= 3 ? 'comfortable' : pct <= 5 ? 'noticeable, may tire some viewers' : 'high, likely uncomfortable'} (rule of thumb: up to ~3%).`;
+        }
+        document.getElementById('btnComfort').addEventListener('click', checkComfort);
+
+        // --- MATCH COLORS (per-channel histogram matching of R to L, undoable) ---
+        function toggleMatchColors() {
+            if (!imagesLoaded) return;
+            if (colorBackup) { frameR = colorBackup.c; origL = colorBackup.oL; origR = colorBackup.oR; colorBackup = null; buildPreview(); refreshView(); showToast("Original colors restored."); return; }
+            const hist = (cv) => {
+                const tw = Math.min(cv.width, 400), c = scaledCanvas(cv, tw, Math.max(1, Math.round(cv.height * tw / cv.width))), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                const H = [new Float64Array(256), new Float64Array(256), new Float64Array(256)];
+                for (let i = 0; i < d.length; i += 4) { H[0][d[i]]++; H[1][d[i + 1]]++; H[2][d[i + 2]]++; } return H;
+            };
+            const hl = hist(frameL), hr = hist(frameR);
+            const cdf = (h) => { let a = 0; const t = h.reduce((x, y) => x + y, 0), o = new Float64Array(256); for (let i = 0; i < 256; i++) { a += h[i]; o[i] = a / t; } return o; };
+            const luts = [0, 1, 2].map(ch => { const cl = cdf(hl[ch]), cr = cdf(hr[ch]), lut = new Uint8Array(256); let j = 0; for (let i = 0; i < 256; i++) { while (j < 255 && cl[j] < cr[i]) j++; lut[i] = j; } return lut; });
+            colorBackup = { c: frameR, oL: origL, oR: origR };
+            const nc = mkCanvas(frameR.width, frameR.height), x = nc.getContext('2d'); x.drawImage(frameR, 0, 0);
+            const id = x.getImageData(0, 0, nc.width, nc.height), d = id.data;
+            for (let i = 0; i < d.length; i += 4) { d[i] = luts[0][d[i]]; d[i + 1] = luts[1][d[i + 1]]; d[i + 2] = luts[2][d[i + 2]]; }
+            x.putImageData(id, 0, 0); frameR = nc; origL = origR = null; buildPreview(); refreshView();
+            showToast("Right image matched to left. Press again to undo.");
+        }
+        document.getElementById('btnMatchColors').addEventListener('click', toggleMatchColors);
+
+        // --- ESC cancels a running GIF / video export ---
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && busy) { cancelReq = true; if (abortGif) abortGif(); showToast("Cancelling..."); } });
+
+        // crop-ratio change: refresh the view
+        document.getElementById('cropAspect').addEventListener('change', () => refreshView());
+
+        // --- ZOOM & PAN (wheel, drag, pinch; double-click or 0 resets) ---
+        const view = { z: 1, x: 0, y: 0 };
+        const viewBox = document.querySelector('.canvas-container'); viewBox.style.touchAction = 'none';
+        function applyView() {
+            view.z = Math.max(1, Math.min(12, view.z)); if (view.z === 1) { view.x = 0; view.y = 0; }
+            const t = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
+            wiggleCanvas.style.transform = t; anaglyphCanvas.style.transform = t; viewBox.style.cursor = view.z > 1 ? 'grab' : '';
+        }
+        function zoomAt(nz, cx, cy) {   // cx, cy relative to the container centre
+            nz = Math.max(1, Math.min(12, nz)); const r = nz / view.z;
+            view.x = cx - (cx - view.x) * r; view.y = cy - (cy - view.y) * r; view.z = nz; applyView();
+        }
+        const centreRel = (e) => { const r = viewBox.getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
+        viewBox.addEventListener('wheel', (e) => { if (!imagesLoaded) return; e.preventDefault(); const [cx, cy] = centreRel(e); zoomAt(view.z * Math.exp(-e.deltaY * 0.0015), cx, cy); }, { passive: false });
+        const ptrs = new Map(); let lastDist = 0;
+        viewBox.addEventListener('pointerdown', (e) => { if (!imagesLoaded) return; ptrs.set(e.pointerId, [e.clientX, e.clientY]); viewBox.setPointerCapture(e.pointerId); lastDist = 0; });
+        viewBox.addEventListener('pointermove', (e) => {
+            if (!ptrs.has(e.pointerId)) return; const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+            if (ptrs.size === 1 && view.z > 1) { view.x += e.clientX - prev[0]; view.y += e.clientY - prev[1]; applyView(); }
+            else if (ptrs.size === 2) {
+                const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); const r = viewBox.getBoundingClientRect();
+                if (lastDist) zoomAt(view.z * d / lastDist, (a[0] + b[0]) / 2 - r.left - r.width / 2, (a[1] + b[1]) / 2 - r.top - r.height / 2);
+                lastDist = d;
+            }
+        });
+        ['pointerup', 'pointercancel'].forEach(t => viewBox.addEventListener(t, (e) => { ptrs.delete(e.pointerId); lastDist = 0; }));
+        viewBox.addEventListener('dblclick', () => { view.z = 1; applyView(); });
+        document.addEventListener('keydown', (e) => { if (e.key === '0' && imagesLoaded && !e.ctrlKey && !e.metaKey) { view.z = 1; applyView(); } });
+
+        // --- MPO INSPECTOR (structure report for debugging viewer compatibility) ---
+        function inspectMPO(buf) {
+            const v = new Uint8Array(buf), dv = new DataView(buf), L = [], hex = n => '0x' + n.toString(16).toUpperCase();
+            const TYPES = { 0x030000: 'Baseline MP Primary', 0x020002: 'Multi-frame: Disparity (stereo)', 0x020003: 'Multi-frame: Multi-angle', 0x020001: 'Multi-frame: Panorama', 0x010001: 'Large thumbnail VGA', 0x010002: 'Large thumbnail Full HD', 0: 'Undefined' };
+            L.push(`File size: ${buf.byteLength} bytes`);
+            const mp = readMpfOffsets(buf), starts = mp && mp.length ? mp.map(m => m.offset) : [0];
+            L.push(mp ? `MPF index lists ${mp.length} image(s)` : 'No MPF index found: this is a plain JPEG (or a non-standard MPO).');
+            const mpfAt = (st) => { let p = st + 2; while (p + 8 < v.length && v[p] === 0xFF) { const m = v[p + 1]; if (m === 0xDA) break; if (m === 0xE2 && v[p + 4] === 0x4D && v[p + 5] === 0x50 && v[p + 6] === 0x46) return p + 8; p += 2 + dv.getUint16(p + 2); } return -1; };
+            const ifdDump = (t, le, off) => {
+                const n = dv.getUint16(t + off, le);
+                for (let i = 0; i < n; i++) {
+                    const e = t + off + 2 + i * 12, tag = dv.getUint16(e, le), ty = dv.getUint16(e + 2, le), c = dv.getUint32(e + 4, le); let val = '';
+                    if (ty === 4 && c === 1) val = dv.getUint32(e + 8, le); else if (ty === 3 && c === 1) val = dv.getUint16(e + 8, le);
+                    else if ((ty === 5 || ty === 10) && c === 1) { const po = t + dv.getUint32(e + 8, le); val = (ty === 10 ? dv.getInt32(po, le) : dv.getUint32(po, le)) + '/' + dv.getUint32(po + 4, le); }
+                    else if (ty === 7 && c === 4) val = String.fromCharCode(v[e + 8], v[e + 9], v[e + 10], v[e + 11]);
+                    L.push(`    ${hex(tag)} type ${ty} x${c} = ${val}`);
+                    if (tag === 0xB002) {
+                        const o = dv.getUint32(e + 8, le);
+                        for (let j = 0; j < Math.floor(c / 16); j++) {
+                            const q = t + o + j * 16, at = dv.getUint32(q, le), tc = at & 0xFFFFFF;
+                            L.push(`      entry ${j + 1}: attr ${hex(at)} [${at & 0x80000000 ? 'parent ' : ''}${at & 0x40000000 ? 'child ' : ''}${at & 0x20000000 ? 'representative ' : ''}${TYPES[tc] || 'type ' + hex(tc)}] size ${dv.getUint32(q + 4, le)} offset ${dv.getUint32(q + 8, le)}`);
+                        }
+                    }
+                }
+                return dv.getUint32(t + off + 2 + n * 12, le);
+            };
+            starts.forEach((st, i) => {
+                L.push(`\n== Image ${i + 1} at byte ${st}${mp && mp[i] ? ' (MPF size ' + mp[i].size + ')' : ''} ==`);
+                if (v[st] !== 0xFF || v[st + 1] !== 0xD8) { L.push('  !! no JPEG start marker (FFD8) at this offset'); return; }
+                let p = st + 2;
+                while (p + 4 < v.length && v[p] === 0xFF) {
+                    const m = v[p + 1]; if (m === 0xDA) { L.push('  SOS (compressed data)'); break; }
+                    const len = dv.getUint16(p + 2); let tag = '';
+                    if (m === 0xE1 && dv.getUint32(p + 4) === 0x45786966) tag = ' Exif'; else if (m === 0xE2 && v[p + 4] === 0x4D && v[p + 5] === 0x50 && v[p + 6] === 0x46) tag = ' MPF'; else if (m === 0xE2) tag = ' ICC/other'; else if (m >= 0xC0 && m <= 0xC2) tag = ` SOF ${dv.getUint16(p + 7)}x${dv.getUint16(p + 5)}`;
+                    L.push(`  ${hex(m)} length ${len}${tag}`); p += 2 + len;
+                }
+                const end = findJpegEnd(buf, st);
+                if (mp && mp[i] && mp[i].size && end > 0 && st + mp[i].size !== end) L.push(`  !! MPF size ${mp[i].size} does not match the real JPEG end (${end - st})`);
+                const ex = readExifTags(buf.slice(st, st + 200000)); const mk = ex.ifd0[0x010F], md = ex.ifd0[0x0110];
+                if (mk || md) L.push(`  Exif camera: ${mk ? mk.v : '?'} / ${md ? md.v : '?'}`);
+                const t = mpfAt(st);
+                if (t > 0) {
+                    try { const le = v[t] === 0x49; L.push(`  MPF IFD (${le ? 'little' : 'big'}-endian):`); const nx = ifdDump(t, le, dv.getUint32(t + 4, le)); if (nx) { L.push('  MP Attribute IFD:'); ifdDump(t, le, nx); } }
+                    catch (err) { L.push('  !! MPF structure is damaged or out of range'); }
+                } else L.push('  (no MPF segment in this image)');
+            });
+            return L.join('\n');
+        }
+        function showReport(text) {
+            const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+            const b = document.createElement('div'); b.style.cssText = 'background:var(--panel-bg);color:var(--text-light);border:1px solid var(--panel-border);border-radius:var(--radius);max-width:780px;width:100%;max-height:88vh;display:flex;flex-direction:column;padding:16px;gap:10px';
+            const pre = document.createElement('pre'); pre.textContent = text; pre.style.cssText = 'overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;flex:1;user-select:text';
+            const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px';
+            const mk = (label, fn) => { const x = document.createElement('button'); x.className = 'btn btn-outline'; x.style.padding = '8px 14px'; x.textContent = label; x.onclick = fn; row.appendChild(x); };
+            mk('Copy data', () => { (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => showToast("MPO data copied."), () => showToast("Select the text and copy it manually.", true)); });
+            mk('Close', () => o.remove()); b.append(pre, row); o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); document.body.appendChild(o);
+        }
+        // Inspect button: only visible when the opened file is an MPO
+        function updateInspectBtn() { document.getElementById('btnInspect').style.display = openedMpoFile ? '' : 'none'; }
+        document.getElementById('btnInspect').addEventListener('click', async () => {
+            if (!openedMpoFile) return;
+            try { showReport(inspectMPO(await openedMpoFile.arrayBuffer())); } catch (err) { console.error(err); showToast("Could not read this file.", true); }
+        });
+
+        // --- ROTATION / SCALE SLIDERS ---
+        function updateRS() {
+            rotDeg = parseFloat(document.getElementById('alignRot').value); scaleK = parseFloat(document.getElementById('alignScale').value) / 100;
+            document.getElementById('valRot').textContent = rotDeg.toFixed(2); document.getElementById('valScale').textContent = (scaleK * 100).toFixed(2);
+            if (isAligning) renderGhosting();
+        }
+        ['alignRot', 'alignScale'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', () => { startAlignment(); updateRS(); });
+            ['change', 'mouseup', 'touchend'].forEach(evt => el.addEventListener(evt, endAlignment));
+        });
+
+        // --- BATCH CONVERSION TO ZIP (store-only ZIP writer, no libraries) ---
+        function crc32(u8) {
+            if (!crc32.t) { crc32.t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crc32.t[n] = c >>> 0; } }
+            let c = ~0; for (let i = 0; i < u8.length; i++) c = crc32.t[(c ^ u8[i]) & 255] ^ (c >>> 8); return ~c >>> 0;
+        }
+        function makeZip(files) {
+            const parts = [], cd = [], enc = new TextEncoder(), d = new Date(); let off = 0;
+            const dt = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+            for (const f of files) {
+                const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+                const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(10, dt, true); lh.setUint16(12, dd, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+                parts.push(new Uint8Array(lh.buffer), nm, f.data);
+                const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(12, dt, true); ch.setUint16(14, dd, true); ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
+                cd.push(new Uint8Array(ch.buffer), nm); off += 30 + nm.length + sz;
+            }
+            const end = new DataView(new ArrayBuffer(22)); end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+            end.setUint32(12, cd.reduce((a, b) => a + b.length, 0), true); end.setUint32(16, off, true);
+            return new Blob([...parts, ...cd, new Uint8Array(end.buffer)], { type: 'application/zip' });
+        }
+        async function batchPair(file) {   // file -> {L, R canvases, b1, b2 raw JPEGs when lossless is possible}
+            const ext = /\.mpo$/i.test(file.name);
+            if (ext || await looksLikeMPO(file)) {
+                try {
+                    const [b1, b2] = await parseMPO(file), [i1, i2] = await Promise.all([imgFromBuffer(b1), imgFromBuffer(b2)]);
+                    if (ext || (i1.width === i2.width && i1.height === i2.height)) {
+                        const w = i1.width, h = i1.height, L = mkCanvas(w, h), R = mkCanvas(w, h);
+                        L.getContext('2d').drawImage(i1, 0, 0); coverDraw(R.getContext('2d'), i2, w, h);
+                        const ok = i2.width === w && i2.height === h && jpegOrientation(b1) === 1 && jpegOrientation(b2) === 1;
+                        return { L, R, b1: ok ? b1 : null, b2: ok ? b2 : null, exif: b1 };
+                    }
+                } catch (e) { if (ext) throw e; }
+            }
+            const url = URL.createObjectURL(file); let img; try { img = await loadImageAsync(url); } finally { URL.revokeObjectURL(url); }
+            const lay = document.getElementById('sbsInputLayout').value; let w, h, a, b;
+            if (lay === 'tb') { w = img.width; h = Math.floor(img.height / 2); a = [0, 0]; b = [0, h]; } else { w = Math.floor(img.width / 2); h = img.height; a = [0, 0]; b = [w, 0]; if (lay === 'cross') [a, b] = [b, a]; }
+            const L = mkCanvas(w, h), R = mkCanvas(w, h);
+            L.getContext('2d').drawImage(img, a[0], a[1], w, h, 0, 0, w, h); R.getContext('2d').drawImage(img, b[0], b[1], w, h, 0, 0, w, h);
+            return { L, R, b1: null, b2: null, exif: null };
+        }
+        async function batchRun(files, fmt, status) {
+            busy = true; cancelReq = false; const out = [], used = new Set(), failed = [];
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    if (cancelReq) break;
+                    const f = files[i]; status.textContent = `Converting ${i + 1} of ${files.length}: ${f.name}  (Esc cancels)`; await nextFrames();
+                    try {
+                        const pr = await batchPair(f), w = pr.L.width, h = pr.L.height; let base = f.name.replace(/\.[^.]+$/, ''), n = 1; while (used.has(base)) base = `${f.name.replace(/\.[^.]+$/, '')}_${++n}`; used.add(base);
+                        let data, name;
+                        if (fmt === 'mpo') {
+                            const j1 = pr.b1 || await canvasToJpegBuffer(pr.L), j2 = pr.b2 || await canvasToJpegBuffer(pr.R), e1 = findJpegEnd(j1, 0), e2 = findJpegEnd(j2, 0);
+                            data = new Uint8Array(createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, pr.exif)); name = base + '.mpo';
+                        } else {
+                            const c = mkCanvas(fmt === 'sbs' ? w * 2 : w, h), x = c.getContext('2d');
+                            if (fmt === 'sbs') { x.drawImage(pr.L, 0, 0); x.drawImage(pr.R, w, 0); }
+                            else {
+                                const dL = pr.L.getContext('2d').getImageData(0, 0, w, h), dR = pr.R.getContext('2d').getImageData(0, 0, w, h), o = x.createImageData(w, h);
+                                anaglyphCPU(dL.data, dR.data, o.data, 'dubois'); x.putImageData(o, 0, 0);
+                            }
+                            data = new Uint8Array(await canvasToJpegBuffer(c, 0.92)); name = base + (fmt === 'sbs' ? '_sbs.jpg' : '_anaglyph.jpg');
+                        }
+                        out.push({ name, data });
+                    } catch (e) { console.error(e); failed.push(f.name); }
+                }
+                if (cancelReq) { showToast("Batch cancelled."); return; }
+                if (!out.length) { showToast("No files could be converted.", true); return; }
+                status.textContent = 'Creating ZIP...'; await nextFrames();
+                await saveBlob(makeZip(out), `3d_batch_${stamp()}.zip`);
+                showToast(`ZIP saved: ${out.length} file(s)` + (failed.length ? `, ${failed.length} failed: ${failed.join(', ')}` : '') + '.', failed.length > 0);
+            } finally { busy = false; }
+        }
+        document.getElementById('btnBatch').addEventListener('click', () => document.getElementById('inputBatch').click());
+        document.getElementById('inputBatch').addEventListener('change', (e) => {
+            const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+            const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+            const b = document.createElement('div'); b.style.cssText = 'background:var(--panel-bg);color:var(--text-light);border:1px solid var(--panel-border);border-radius:var(--radius);max-width:520px;width:100%;display:flex;flex-direction:column;padding:16px;gap:12px';
+            const title = document.createElement('div'); title.textContent = `Batch convert ${files.length} file(s) to a ZIP`;
+            const sel = document.createElement('select'); sel.innerHTML = '<option value="mpo">MPO (lossless when possible)</option><option value="sbs">Full side-by-side JPEG</option><option value="ana">Anaglyph (Dubois) JPEG</option>';
+            const note = document.createElement('div'); note.style.cssText = 'font-size:12px;color:var(--text-muted)'; note.textContent = 'Pairs are converted as they are (no alignment). Single non-MPO files use the layout chosen on the start screen. The ZIP is built in memory, so keep batches moderate.';
+            const status = document.createElement('div'); status.style.cssText = 'font-size:12px;word-break:break-all'; const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px';
+            const go = document.createElement('button'); go.className = 'btn'; go.style.padding = '8px 14px'; go.textContent = 'Start';
+            const close = document.createElement('button'); close.className = 'btn btn-outline'; close.style.padding = '8px 14px'; close.textContent = 'Close'; close.onclick = () => { if (!busy) o.remove(); };
+            go.onclick = async () => { if (busy) return; go.disabled = sel.disabled = true; await batchRun(files, sel.value, status); go.disabled = sel.disabled = false; status.textContent = 'Done.'; };
+            row.append(go, close); b.append(title, sel, note, status, row); o.appendChild(b); document.body.appendChild(o);
         });
 
         // stop Space from also "clicking" a focused button after the shortcut already handled it
