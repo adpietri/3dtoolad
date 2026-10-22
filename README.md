@@ -2,7 +2,7 @@
 3DToolAD - Stereoscopic 3D Image Creator
 
 
-![Version](https://img.shields.io/badge/version-1.4_Beta-orange.svg)
+![Version](https://img.shields.io/badge/version-2.0_Beta-orange.svg)
 ![License](https://img.shields.io/badge/license-GPLv3-blue.svg)
 
 **3DToolAD** is a lightweight, fully-featured web application designed for creating, aligning, and exporting stereoscopic 3D images. Whether you are digitizing historical stereocards, working with MPO files, or creating modern wigglegrams, this tool provides a complete workspace directly in your browser.
