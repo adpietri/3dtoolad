@@ -21,7 +21,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob: data:; media-src blob:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-    <title>3DtoolAd 2.0</title>
+    <title>3dToolAD 2.1</title>
     <style>
         /* === DARK THEME (DEFAULT) === */
         :root {
@@ -82,7 +82,7 @@
         
         .top-actions { display: flex; gap: 12px; align-items: center; }
         
-        #btnTheme {
+        #btnTheme, #btnHelp {
             background: transparent;
             border: 1px solid var(--panel-border);
             color: var(--text-light);
@@ -93,7 +93,7 @@
             font-size: 1.1rem;
             transition: 0.2s;
         }
-        #btnTheme:hover { background: var(--secondary); }
+        #btnTheme:hover, #btnHelp:hover { background: var(--secondary); }
         
         #btnClear { flex-shrink: 0; white-space: nowrap; }
         
@@ -122,6 +122,9 @@
         /* Sidebar Panels */
         .sidebar { background: var(--panel-bg); border-right: 1px solid var(--panel-border); display: flex; flex-direction: column; overflow-y: auto; min-height: 0; transition: background-color 0.3s; }
         .sidebar-right { border-right: none; border-left: 1px solid var(--panel-border); }
+        /* never let flex squeeze a section or the open <details> below its content (it made the divider line cut through the controls) */
+        .sidebar > *, .panel-section > *, .sidebar details { flex-shrink: 0; }
+        .sidebar details { display: block; min-height: min-content; }
 
         .panel-section { padding: 20px; border-bottom: 1px solid var(--panel-border); transition: border-color 0.3s; }
         .panel-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 15px; font-weight: 600; }
@@ -286,9 +289,10 @@
     <!-- Top Navbar -->
     <div class="navbar">
         <div class="navbar-brand">
-            3DToolAD v2.0 (Beta)
+            3DToolAD v2.1 (Beta)
         </div>
         <div class="top-actions">
+            <button id="btnHelp" title="Keyboard shortcuts (?)" style="font-weight: 700; font-size: 1.1rem;">?</button>
             <button id="btnTheme" title="Toggle Light/Dark Theme (D)">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
             </button>
@@ -316,7 +320,7 @@
                 </select>
             </div>
             <p style="margin: 14px 0 0; font-size: 0.8rem;">You can also drag &amp; drop one file (MPO / SBS) or two photos (left, right).</p>
-            <button type="button" class="btn btn-outline" id="btnBatch" style="margin-top: 12px; padding: 8px 14px;">Batch convert...</button>
+            <button type="button" class="btn btn-outline" id="btnBatch" style="margin-top: 12px; padding: 8px 14px;">Batch convert to ZIP...</button>
             <input type="file" id="inputBatch" accept=".mpo,image/*" multiple style="display: none;">
             
             <div style="margin: 30px 0; color: var(--panel-border); display: flex; align-items: center; justify-content: center; gap: 10px;">
@@ -372,6 +376,13 @@
                     <input type="range" id="alignScale" min="95" max="105" step="0.05" value="100">
                 </div>
                 <div class="control-group" style="margin-top: 10px;">
+                    <label>Floating window <span id="valFloat">0.0</span>% (black edge bars, moves the frame forward)</label>
+                    <input type="range" id="alignFloat" min="0" max="6" step="0.1" value="0">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label><input type="checkbox" id="gridToggle"> Rule-of-thirds grid (H)</label>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
                     <label>Alignment View</label>
                     <select id="alignView">
                         <option value="ghost" selected>Ghost (50% overlay)</option>
@@ -424,6 +435,7 @@
                         <option value="redblue">Classic (Red/Blue)</option>
                         <option value="greenmagenta">Trioscopic (Green/Magenta)</option>
                         <option value="crosseye">Cross-eyed (Side-by-side)</option>
+                        <option value="parallel">Parallel side-by-side (free-view)</option>
                     </select>
                 </div>
                 <div id="anaRenderer" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;"></div>
@@ -449,7 +461,7 @@
         </div>
 
         <div class="sidebar sidebar-right">
-            <div class="panel-section" style="background: rgba(99, 102, 241, 0.03); height: 100%;">
+            <div class="panel-section" style="background: rgba(99, 102, 241, 0.03); min-height: 100%;">
                 <div class="panel-title" style="color: var(--text-light);">Export Center</div>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Save your aligned project in various formats.</p>
                 
@@ -461,12 +473,27 @@
                     </button>
                     <button type="button" class="btn btn-outline" id="btnExportMPO">Save as MPO (M)</button>
                     <button type="button" class="btn btn-outline" id="btnInspect" style="display: none;">Inspect MPO data</button>
+                    <button type="button" class="btn btn-outline" id="btnInfo">Image info</button>
                     
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Static Render</div>
                     <button type="button" class="btn btn-outline" id="btnExportAnaglyph">Save Anaglyph PNG (P)</button>
                     
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Animation Render</div>
+                    <details style="margin: 4px 0;">
+                        <summary style="cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">Wiggle export options</summary>
+                        <div class="control-group" style="margin-top: 8px;"><label>Watermark text (GIF, APNG, video, anaglyph)</label>
+                            <input type="text" id="wmText" maxlength="60" placeholder="e.g. (c) Your Name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--bg-dark); color: var(--text-light);"></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>GIF / APNG max width</label>
+                            <select id="expWidth"><option value="480">480 px</option><option value="800" selected>800 px</option><option value="1200">1200 px</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Loops (GIF / APNG)</label>
+                            <select id="expLoops"><option value="0" selected>Infinite</option><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Video length</label>
+                            <select id="expVidSec"><option value="3" selected>about 3 s</option><option value="6">about 6 s</option><option value="10">about 10 s</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Video frame rate</label>
+                            <select id="expFps"><option value="24">24 fps</option><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></div>
+                    </details>
                     <button type="button" class="btn btn-outline" id="btnExportGIF">Save High-Res GIF (G)</button>
+                    <button type="button" class="btn btn-outline" id="btnExportAPNG">Save APNG (24-bit animated PNG)</button>
                     <button type="button" class="btn btn-outline" id="btnExportVideo">Save Video MP4 (V)</button>
                 </div>
             </div>
@@ -493,7 +520,7 @@
                         <option value="row-int">Row-interlaced (passive 3D monitors)</option>
                         <option value="col-int">Column-interlaced</option>
                         <option value="checker-int">Checkerboard-interlaced</option>
-                        <option value="vr">VR (SBS, square cells)</option>
+                        <option value="vr">VR / Cardboard (SBS, square cells)</option>
                     </select>
                 </div>
                 
@@ -514,12 +541,26 @@
                     </div>
                 </div>
 
+                <div class="control-group" id="sbsWmGroup" style="margin-top: 20px; display: none;">
+                    <label>Watermark text (printed in the border under BOTH photos)</label>
+                    <input type="text" id="sbsWm" maxlength="60" placeholder="e.g. (c) Your Name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--bg-dark); color: var(--text-light);">
+                    <div class="color-picker-row" style="margin-top: 8px;">
+                        <input type="color" id="sbsWmColor" value="#4a3f35">
+                        <span style="font-size: 0.85rem; color: var(--text-muted);">Text color</span>
+                    </div>
+                </div>
+
                 <div class="control-group" style="margin-top: 20px;">
                     <label>File Format</label>
                     <select id="sbsFormat">
                         <option value="jpg" selected>JPEG (small, best for TVs)</option>
                         <option value="png">PNG (lossless, large)</option>
                     </select>
+                </div>
+
+                <div class="control-group" id="sbsQualGroup" style="margin-top: 10px;">
+                    <label>JPEG Quality <span id="sbsQualVal">95</span>%</label>
+                    <input type="range" id="sbsQuality" min="50" max="100" step="1" value="95">
                 </div>
 
                 <div style="margin-top: auto; padding-top: 30px;">
@@ -542,6 +583,7 @@
         let pvL = null, pvR = null, pvScale = 1;      // reduced-resolution copies used by the live views
         let origL = null, origR = null;               // original JPEG bytes (lossless MPO pass-through)
         let fileL = null, fileR = null;               // separate uploads
+        let floatPct = 0;                             // floating stereo window width (% of frame width)
         let rotDeg = 0, scaleK = 1;                   // rotation (deg) and scale applied to the right image
         let openedMpoFile = null;                     // the file currently open, only when it is a real MPO
         let busy = false;                             // an export is running
@@ -832,7 +874,7 @@
             offsetX = 0; offsetY = 0; valX.innerText = "0"; valY.innerText = "0"; resetRS();
         }
 
-        function finishFrames() { if (typeof view !== 'undefined') { view.z = 1; applyView(); } colorBackup = null; buildPreview(); setAlignRange(); isAligning = false; }
+        function finishFrames() { if (typeof view !== 'undefined') { view.z = 1; applyView(); } hist.a = [{ x: 0, y: 0, r: 0, k: 1 }]; hist.i = 0; colorBackup = null; buildPreview(); setAlignRange(); isAligning = false; }
 
         function setFrames(imgL, imgR, rawL, rawR) {
             exifBuf = rawL || null;
@@ -930,9 +972,9 @@
         function drawRGhost(ctx, ox, oy) { ctx.save(); placeR(ctx, pvR, ox, oy); ctx.restore(); }
         function syncRS() {
             const r = document.getElementById('alignRot'), k = document.getElementById('alignScale');
-            r.value = rotDeg; k.value = scaleK * 100; document.getElementById('valRot').textContent = rotDeg.toFixed(2); document.getElementById('valScale').textContent = (scaleK * 100).toFixed(2);
+            r.value = rotDeg; k.value = scaleK * 100; document.getElementById('alignFloat').value = floatPct; document.getElementById('valFloat').textContent = floatPct.toFixed(1); document.getElementById('valRot').textContent = rotDeg.toFixed(2); document.getElementById('valScale').textContent = (scaleK * 100).toFixed(2);
         }
-        function resetRS() { rotDeg = 0; scaleK = 1; syncRS(); }
+        function resetRS() { rotDeg = 0; scaleK = 1; floatPct = 0; syncRS(); }
         function renderGhosting() {
             if (!imagesLoaded) return;
             const w = pvL.width, h = pvL.height, view = document.getElementById('alignView').value;
@@ -969,10 +1011,11 @@
 
         function endAlignment() {
             if (!isAligning) return;
+            pushHist();
             isAligning = false; isPlaying = wasPlayingBeforeAlign; updatePlayButtonIcon();
             if (currentTab === 'wiggle') {
                 drawWiggleStatic(currentFrame);
-                if (isPlaying) { lastSwapTime = performance.now(); if (!animationId) animationId = requestAnimationFrame(renderWiggleLoop); }
+                if (isPlaying) { lastSwapTime = performance.now(); if (animationId) cancelAnimationFrame(animationId); animationId = requestAnimationFrame(renderWiggleLoop); }
             } else { generateAnaglyph(); }
         }
 
@@ -980,10 +1023,11 @@
         alignY.addEventListener('input', () => { startAlignment(); updateAlignment(); });
         ['change', 'mouseup', 'touchend'].forEach(evt => { alignX.addEventListener(evt, endAlignment); alignY.addEventListener(evt, endAlignment); });
 
-        function setOffsets(x, y) {
+        function setOffsets(x, y, noHist) {
             const lim = parseInt(alignX.max);
             offsetX = Math.max(-lim, Math.min(lim, Math.round(x))); offsetY = Math.max(-lim, Math.min(lim, Math.round(y)));
             alignX.value = offsetX; alignY.value = offsetY; valX.innerText = offsetX; valY.innerText = offsetY;
+            if (!noHist) pushHist();
             if (isAligning) endAlignment(); else refreshView();   // leave the ghost view and resume the animation
         }
 
@@ -1109,8 +1153,11 @@
         function drawAligned(ctx, which, dw, dh, c, pv) {
             const sL = pv ? pvL : frameL, sR = pv ? pvR : frameR;
             c = c || getCropRect(pv);
-            if (which === 'L') { ctx.drawImage(sL, c.x0, c.y0, c.w, c.h, 0, 0, dw, dh); return; }
-            ctx.save(); ctx.scale(dw / c.w, dh / c.h); ctx.translate(-c.x0, -c.y0); placeR(ctx, sR, c.dx, c.dy); ctx.restore();
+            const fw = Math.round(dw * floatPct / 100);   // floating window: black bar on the left edge of L and the right edge of R
+            if (which === 'L') { ctx.drawImage(sL, c.x0, c.y0, c.w, c.h, 0, 0, dw, dh); if (fw) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, fw, dh); } return; }
+            if (!rotDeg && scaleK === 1 && !c.fallback) ctx.drawImage(sR, c.x0 - c.dx, c.y0 - c.dy, c.w, c.h, 0, 0, dw, dh);   // fast path: plain crop, no transform
+            else { ctx.save(); ctx.scale(dw / c.w, dh / c.h); ctx.translate(-c.x0, -c.y0); placeR(ctx, sR, c.dx, c.dy); ctx.restore(); }
+            if (fw) { ctx.fillStyle = '#000'; ctx.fillRect(dw - fw, 0, fw, dh); }
         }
 
         function getAlignedFrames(pv) {
@@ -1228,7 +1275,7 @@
         // Draws the anaglyph (or cross-eye pair) for the current alignment into any canvas. Returns 'GPU' | 'CPU'.
         function renderAnaglyphTo(canvas, pv) {
             const mode = document.getElementById('anaglyphMode').value, al = getAlignedFrames(pv), w = al.w, h = al.h, ctx = canvas.getContext('2d');
-            if (mode === 'crosseye') { canvas.width = w * 2; canvas.height = h; ctx.drawImage(al.R, 0, 0, w, h); ctx.drawImage(al.L, w, 0, w, h); return 'CPU'; }
+            if (mode === 'crosseye' || mode === 'parallel') { canvas.width = w * 2; canvas.height = h; const [a, b] = mode === 'crosseye' ? [al.R, al.L] : [al.L, al.R]; ctx.drawImage(a, 0, 0, w, h); ctx.drawImage(b, w, 0, w, h); return 'CPU'; }
             if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
             if (initGL()) {
                 try { const g = anaglyphGL(al.L, al.R, mode, w, h); if (g) { ctx.drawImage(g, 0, 0); return 'GPU'; } }
@@ -1265,10 +1312,18 @@
         });
 
         [sbsLayoutMode, sbsBorderStyle, sbsBgColor].forEach(el => el.addEventListener('change', updateSBSPreview));
+        function updateSbsFormatUI() {   // the quality slider only applies to JPEG
+            document.getElementById('sbsQualGroup').style.display = document.getElementById('sbsFormat').value === 'jpg' ? '' : 'none';
+            document.getElementById('sbsQualVal').textContent = document.getElementById('sbsQuality').value;
+        }
+        ['sbsFormat', 'sbsQuality'].forEach(id => document.getElementById(id).addEventListener(id === 'sbsQuality' ? 'input' : 'change', updateSbsFormatUI));
+        document.getElementById('sbsWmColor').addEventListener('input', () => { if (imagesLoaded && sbsModal.classList.contains('active')) updateSBSPreview(); });
+        document.getElementById('sbsWm').addEventListener('input', () => { if (imagesLoaded && sbsModal.classList.contains('active')) updateSBSPreview(); });
         sbsBgColor.addEventListener('input', updateSBSPreview);
 
         function updateSBSPreview() {
             if (!imagesLoaded) return;
+            updateSbsFormatUI();
             const al = sbsAl || (sbsAl = getAlignedFrames(false));
             const mode = sbsLayoutMode.value;
             const borderStyle = sbsBorderStyle.value;
@@ -1367,6 +1422,9 @@
 
             drawImageClipped(img1, Lx, Ly, Lw, Lh);
             drawImageClipped(img2, Rx, Ry, Rw, Rh);
+            document.getElementById('sbsWmGroup').style.display = borderStyle !== 'none' ? '' : 'none';
+            const wmt = (document.getElementById('sbsWm').value || '').trim();
+            if (borderStyle !== 'none' && wmt) [[Lx, Ly, Lw, Lh], [Rx, Ry, Rw, Rh]].forEach(([x, y, iw, ih]) => wmBorder(sbsPreviewCtx, x, y, iw, ih, padY, wmt, document.getElementById('sbsWmColor').value));   // identical spot under each eye
         }
 
         document.getElementById('btnConfirmSbsSave').addEventListener('click', () => {
@@ -1376,7 +1434,7 @@
                 await saveBlob(blob, `3d_${sbsLayoutMode.value}_${stamp()}.${jpg ? 'jpg' : 'png'}`);
                 showToast("SBS Image saved successfully!");
                 sbsModal.classList.remove('active'); sbsAl = null;
-            }, jpg ? 'image/jpeg' : 'image/png', 0.95);
+            }, jpg ? 'image/jpeg' : 'image/png', jpg ? parseInt(document.getElementById('sbsQuality').value) / 100 : undefined);
         });
 
         // --- EXPORT HELPERS ---
@@ -1407,7 +1465,7 @@
         // --- EXPORTS ---
         document.getElementById('btnExportAnaglyph').addEventListener('click', (e) => {
             withBusy(e.currentTarget, 'Rendering...', 'anaglyph', async () => {
-                const c = document.createElement('canvas'); renderAnaglyphTo(c, false);   // always full resolution
+                const c = document.createElement('canvas'); renderAnaglyphTo(c, false); wm(c.getContext('2d'), c.width, c.height);   // always full resolution
                 const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('image too large for this browser')), 'image/png'));
                 await saveBlob(blob, `anaglyph_3d_${stamp()}.png`); showToast("3D Image saved successfully!");
             });
@@ -1421,7 +1479,7 @@
             const vbtn = e.currentTarget;
             withBusy(vbtn, 'Recording... (Esc cancels)', 'video', async () => {
                 const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
-                const cycles = Math.max(1, Math.ceil(3000 / (speed * 2))), duration = cycles * speed * 2;
+                const cycles = Math.max(1, Math.ceil(parseInt(document.getElementById('expVidSec').value) * 1000 / (speed * 2))), duration = cycles * speed * 2;
                 const c = getCropRect(false); let vw = c.w, vh = c.h; const MAXV = 1920;
                 if (Math.max(vw, vh) > MAXV) { const s = MAXV / Math.max(vw, vh); vw = Math.round(vw * s); vh = Math.round(vh * s); }
                 vw &= ~1; vh &= ~1; if (vw < 2 || vh < 2) throw new Error('image too small');
@@ -1433,10 +1491,11 @@
                         drawAligned(cx, idx === 0 ? 'L' : 'R', vw, vh, c, false);
                         cx.globalAlpha = Math.sin(Math.min(frac, 1) * Math.PI / 2); drawAligned(cx, idx === 0 ? 'R' : 'L', vw, vh, c, false); cx.globalAlpha = 1;
                     } else drawAligned(cx, idx === 0 ? 'L' : 'R', vw, vh, c, false);
+                    wm(cx, vw, vh);
                 };
                 let mime = 'video/mp4';
                 if (!MediaRecorder.isTypeSupported(mime)) { mime = 'video/webm;codecs=vp9'; if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm'; }
-                const stream = cv.captureStream(30), chunks = [];
+                const stream = cv.captureStream(parseInt(document.getElementById('expFps').value)), chunks = [];
                 const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
                 rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
                 const stopped = new Promise((res, rej) => { rec.onstop = res; rec.onerror = ev => rej((ev && ev.error) || new Error('recorder error')); });
@@ -1454,7 +1513,7 @@
         // Self-contained (no outside references) so it can run in a Web Worker or on the main thread.
         // frames: array of RGBA Uint8ClampedArray. Builds ONE shared 256-colour palette (median cut) and uses
         // position-based ordered dithering, so identical pixels in both frames get identical indices (no flicker).
-        function gifEncodeAll(frames, w, h, delayCs) {
+        function gifEncodeAll(frames, w, h, delayCs, loops) {
             const N = w * h;
             const lzw = (indices) => {
                 const minCode = 8, clear = 256, eoi = 257;
@@ -1528,7 +1587,7 @@
             const parts = [];
             str("GIF89a"); word(w); word(h); byte(0xF7); byte(0); byte(0);
             for (let i = 0; i < 768; i++) byte(pal[i]);
-            byte(0x21); byte(0xFF); byte(0x0B); str("NETSCAPE2.0"); byte(0x03); byte(0x01); word(0); byte(0x00);
+            byte(0x21); byte(0xFF); byte(0x0B); str("NETSCAPE2.0"); byte(0x03); byte(0x01); word(loops || 0); byte(0x00);
             for (const f of frames) {
                 const idx = new Uint8Array(N);
                 for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) {
@@ -1547,19 +1606,19 @@
         }
 
         // Runs the encoder in a Web Worker (UI stays responsive); falls back to the main thread if workers are unavailable.
-        function runGifJob(frames, w, h, delay) {
+        function runGifJob(frames, w, h, delay, loops) {
             return new Promise((resolve, reject) => {
-                const direct = () => { try { resolve(gifEncodeAll(frames, w, h, delay)); } catch (e) { reject(e); } };
+                const direct = () => { try { resolve(gifEncodeAll(frames, w, h, delay, loops)); } catch (e) { reject(e); } };
                 let url = null, wk = null;
                 try {
                     if (typeof Worker === 'undefined' || !window.Blob || !URL.createObjectURL) return direct();
-                    const src = `self.onmessage=function(e){var d=e.data;try{self.postMessage({parts:(${gifEncodeAll.toString()})(d.frames,d.w,d.h,d.delay)});}catch(err){self.postMessage({error:String(err)});}};`;
+                    const src = `self.onmessage=function(e){var d=e.data;try{self.postMessage({parts:(${gifEncodeAll.toString()})(d.frames,d.w,d.h,d.delay,d.loops)});}catch(err){self.postMessage({error:String(err)});}};`;
                     url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' })); wk = new Worker(url);
                     const done = () => { wk.terminate(); URL.revokeObjectURL(url); };
                     abortGif = () => { done(); reject(new Error('cancelled')); };
                     wk.onmessage = (ev) => { done(); ev.data.error ? reject(new Error(ev.data.error)) : resolve(ev.data.parts); };
                     wk.onerror = (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); done(); direct(); };
-                    wk.postMessage({ frames, w, h, delay });
+                    wk.postMessage({ frames, w, h, delay, loops });
                 } catch (e) { if (wk) wk.terminate(); if (url) URL.revokeObjectURL(url); direct(); }
             });
         }
@@ -1569,10 +1628,10 @@
                 await nextFrames();
                 const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked;
                 const framesCount = smooth ? Math.max(2, Math.min(6, Math.floor(speed / 20))) : 1;
-                const c = getCropRect(false); let W = c.w, H = c.h; const MAXW = 800;
+                const c = getCropRect(false); let W = c.w, H = c.h; const MAXW = parseInt(document.getElementById('expWidth').value);
                 if (W > MAXW) { H = Math.max(1, Math.round(H * MAXW / W)); W = MAXW; }
                 const off = mkCanvas(W, H), ctx = off.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high'; const frames = [];
-                const grab = () => frames.push(ctx.getImageData(0, 0, W, H).data);
+                const grab = () => { wm(ctx, W, H); frames.push(ctx.getImageData(0, 0, W, H).data); };
                 if (!smooth) {
                     for (const which of ['L', 'R']) { ctx.clearRect(0, 0, W, H); drawAligned(ctx, which, W, H, c, false); grab(); }
                 } else {
@@ -1585,12 +1644,21 @@
                     }
                 }
                 const delayCs = Math.max(2, Math.round((smooth ? speed / framesCount : speed) / 10));
-                const parts = await runGifJob(frames, W, H, delayCs);
+                const parts = await runGifJob(frames, W, H, delayCs, parseInt(document.getElementById('expLoops').value));
                 await saveBlob(new Blob(parts, { type: 'image/gif' }), `wiggle_${stamp()}.gif`); showToast("Animated GIF exported successfully!");
             });
         });
 
         // --- MPO CREATION ---
+        async function makeThumb(cv) {   // small JPEG preview for the EXIF thumbnail (null if disabled or it fails)
+            if (!MPO_OPTS.thumbnail) return null;
+            try {
+                const k = MPO_OPTS.thumbSize / Math.max(cv.width, cv.height);
+                const t = scaledCanvas(cv, Math.max(1, Math.round(cv.width * k)), Math.max(1, Math.round(cv.height * k)));
+                for (const q of [0.8, 0.6, 0.4]) { const b = new Uint8Array(await canvasToJpegBuffer(t, q)); if (b.length < 60000) return b; }   // must fit the 64 KB EXIF segment
+                return null;
+            } catch (e) { return null; }
+        }
         function canvasToJpegBuffer(canvas, q) {
             return new Promise((resolve, reject) => {
                 canvas.toBlob(b => { if (!b) { reject(new Error('image too large for this browser')); return; } b.arrayBuffer().then(resolve, reject); }, 'image/jpeg', q || MPO_OPTS.quality);
@@ -1616,11 +1684,13 @@
             disparityType: true,   // image type codes = Multi-frame "Disparity" (0x020002), the code used by 3D cameras
             attrIFD: true,         // write the MP Attribute IFD in BOTH images (image 1 too, as CIPA DC-007 expects)
             geometry: true,        // BaseViewpointNum / ConvergenceAngle / BaselineLength tags
+            thumbnail: true,       // embed a small preview in each image's EXIF (file browsers use it)
+            thumbSize: 160,        // thumbnail longest side in pixels
             quality: 0.95,         // JPEG quality used when the images must be re-encoded
             baselineMm: 65,        // stereo baseline length in millimetres
-            make: '3DtoolAD',
+            make: '3DtoolAD v2.1',
             model: 'Stereoscopic 3D Image',
-            software: '3DtoolAD v2.0'
+            software: '3DtoolAD v2.1'
         };
 
         // Generic little-endian TIFF IFD writer.
@@ -1705,13 +1775,13 @@
             return out;
         }
 
-        function buildExifSegment(w, h, src) {
+        function buildExifSegment(w, h, src, thumb) {
             const d = new Date(), p2 = n => String(n).padStart(2, '0');
             const stamp = `${d.getFullYear()}:${p2(d.getMonth() + 1)}:${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
             const o = src ? readExifTags(src) : { ifd0: {}, exif: {} };
             const keep = (map, tag, fb) => map[tag] ? { tag, type: map[tag].type, v: map[tag].v } : fb;
             const taken = o.exif[0x9003] ? o.exif[0x9003].v : stamp;
-            const ifd0 = ptr => tiffIfd([
+            const ifd0 = (ptr, nxt) => tiffIfd([
                 keep(o.ifd0, 0x010F, { tag: 0x010F, type: 2, v: MPO_OPTS.make }),
                 keep(o.ifd0, 0x0110, { tag: 0x0110, type: 2, v: MPO_OPTS.model }),
                 { tag: 0x0112, type: 3, v: 1 },
@@ -1722,9 +1792,8 @@
                 { tag: 0x0132, type: 2, v: stamp },
                 { tag: 0x0213, type: 3, v: 1 },
                 { tag: 0x8769, type: 4, v: ptr }
-            ], 8, 0);
-            const exifStart = 8 + ifd0(0).length;
-            const ifd0b = ifd0(exifStart);
+            ], 8, nxt || 0);
+            const exifStart = 8 + ifd0(0, 0).length;
             const ex = [
                 { tag: 0x9000, type: 7, v: [0x30, 0x32, 0x33, 0x30] },
                 { tag: 0x9003, type: 2, v: taken },
@@ -1737,7 +1806,18 @@
             ];
             [0x829A, 0x829D, 0x8827, 0x920A, 0xA434].forEach(t => { if (o.exif[t]) ex.push(keep(o.exif, t)); });
             const exifIfd = tiffIfd(ex, exifStart, 0);
-            const all = new Uint8Array(ifd0b.length + exifIfd.length); all.set(ifd0b, 0); all.set(exifIfd, ifd0b.length);
+            const ifd1Start = exifStart + exifIfd.length, useTh = !!(thumb && thumb.length && thumb.length < 60000);   // APP1 holds at most 64 KB
+            const ifd0b = ifd0(exifStart, useTh ? ifd1Start : 0);
+            let ifd1 = new Uint8Array(0);
+            if (useTh) {   // IFD1 = the thumbnail: JPEG-compressed, with offset and length of the bytes that follow it
+                const mk = off => tiffIfd([
+                    { tag: 0x0103, type: 3, v: 6 }, { tag: 0x011A, type: 5, v: [[72, 1]] }, { tag: 0x011B, type: 5, v: [[72, 1]] }, { tag: 0x0128, type: 3, v: 2 },
+                    { tag: 0x0201, type: 4, v: off }, { tag: 0x0202, type: 4, v: thumb.length }
+                ], ifd1Start, 0);
+                ifd1 = mk(ifd1Start + mk(0).length);
+            }
+            const all = new Uint8Array(ifd0b.length + exifIfd.length + ifd1.length + (useTh ? thumb.length : 0));
+            all.set(ifd0b, 0); all.set(exifIfd, ifd0b.length); all.set(ifd1, ifd0b.length + exifIfd.length); if (useTh) all.set(thumb, ifd0b.length + exifIfd.length + ifd1.length);
             return tiffSegment(0xFFE1, [0x45, 0x78, 0x69, 0x66, 0, 0], all);
         }
 
@@ -1776,9 +1856,9 @@
             return tiffSegment(0xFFE2, MPF_SIG, all);
         }
 
-        function createMPOBuffer(jpeg1, jpeg2, exifSrc) {
+        function createMPOBuffer(jpeg1, jpeg2, exifSrc, th1, th2) {
             const a = splitJpeg(jpeg1), b = splitJpeg(jpeg2);
-            const exif1 = buildExifSegment(a.w, a.h, exifSrc), exif2 = buildExifSegment(b.w, b.h, exifSrc);
+            const exif1 = buildExifSegment(a.w, a.h, exifSrc, th1), exif2 = buildExifSegment(b.w, b.h, exifSrc, th2);
             const bodyLen = x => x.segs.reduce((t, s) => t + s.length, 0) + x.scan.length;
             const mpf2 = buildMpfSegment(false, 2);
             const mpf1Len = buildMpfSegment(true, 1, 0, 0, 0).length; // length does not depend on the values
@@ -1796,11 +1876,12 @@
 
         document.getElementById('btnExportMPO').addEventListener('click', (e) => {
             withBusy(e.currentTarget, 'Generating MPO...', 'MPO', async () => {
-                const c = getCropRect(false); let j1, j2;
-                if (!c.fallback && rotDeg === 0 && scaleK === 1 && c.w === frameL.width && c.h === frameL.height && c.dx === 0 && c.dy === 0 && origL && origR) { j1 = origL; j2 = origR; }   // lossless: original JPEG bytes
-                else { const al = getAlignedFrames(false); [j1, j2] = await Promise.all([canvasToJpegBuffer(al.L), canvasToJpegBuffer(al.R)]); }
+                const c = getCropRect(false); let j1, j2, sL, sR;
+                if (!c.fallback && rotDeg === 0 && floatPct === 0 && scaleK === 1 && c.w === frameL.width && c.h === frameL.height && c.dx === 0 && c.dy === 0 && origL && origR) { j1 = origL; j2 = origR; sL = pvL; sR = pvR; }   // lossless: original JPEG bytes
+                else { const al = getAlignedFrames(false); [j1, j2] = await Promise.all([canvasToJpegBuffer(al.L), canvasToJpegBuffer(al.R)]); sL = al.L; sR = al.R; }
+                const [t1, t2] = await Promise.all([makeThumb(sL), makeThumb(sR)]);
                 const e1 = findJpegEnd(j1, 0), e2 = findJpegEnd(j2, 0);
-                const mpo = createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, exifBuf);
+                const mpo = createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, exifBuf, t1, t2);
                 await saveBlob(new Blob([mpo], { type: 'image/mpo' }), `stereoscopic_3d_${stamp()}.mpo`);
                 showToast("MPO Image saved successfully!");
             });
@@ -1842,6 +1923,7 @@
             if (isEditorActive) {
                 if (key === ' ') {
                     e.preventDefault(); 
+                    const ae = document.activeElement; if (ae && ae !== document.body && ae.type !== 'range') ae.blur();   // so Space cannot also toggle a focused checkbox/button
                     document.getElementById('btnPlayPause').click();
                 }
                 if (key === 's') {
@@ -1865,7 +1947,7 @@
         // --- ARROW KEYS: fine alignment (Shift = 10 px) ---
         let nudgeTimer = null;
         document.addEventListener('keydown', (e) => {
-            if (!imagesLoaded || busy || sbsModal.classList.contains('active') || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (!imagesLoaded || busy || document.querySelector('.ov') || sbsModal.classList.contains('active') || e.ctrlKey || e.metaKey || e.altKey) return;
             const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
             if (!mv || (document.activeElement && (document.activeElement.type === 'range' || document.activeElement.tagName === 'SELECT'))) return;
             e.preventDefault(); const k = e.shiftKey ? 10 : 1, lim = parseInt(alignX.max);
@@ -1880,7 +1962,7 @@
         function copyDiagnostics() {
             initGL();
             const mt = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
-            const L = ['3dToolAD 1.2', navigator.userAgent, `Screen ${screen.width}x${screen.height} @${window.devicePixelRatio}x`,
+            const L = ['3DToolAD 2.1', navigator.userAgent, `Screen ${screen.width}x${screen.height} @${window.devicePixelRatio}x`,
                 'WebGL anaglyph: ' + (GL.ok ? 'yes, max texture ' + GL.maxTex : 'no (CPU fallback)'), 'Web Worker: ' + (typeof Worker !== 'undefined'),
                 'MediaRecorder: ' + (typeof MediaRecorder !== 'undefined' ? mt.map(t => t + '=' + MediaRecorder.isTypeSupported(t)).join(', ') : 'no'),
                 'Share files: ' + !!navigator.canShare];
@@ -1888,16 +1970,16 @@
             const t = L.join('\n');
             (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => showToast("Diagnostics copied."), () => prompt('Copy diagnostics:', t));
         }
-        document.addEventListener('keydown', (e) => { if (e.key === 'i' && !e.ctrlKey && !e.metaKey && !e.repeat && !sbsModal.classList.contains('active')) copyDiagnostics(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'i' && isDiag() && !e.ctrlKey && !e.metaKey && !e.repeat && !sbsModal.classList.contains('active')) copyDiagnostics(); });
 
         // --- REMEMBER SETTINGS ---
         (function () {
-            const ids = ['anaglyphMode', 'speedRange', 'interpolateCheck', 'sbsLayoutMode', 'sbsFormat', 'alignView', 'sbsInputLayout', 'cropAspect'], K = '3dtool-settings'; let st = {};
+            const ids = ['anaglyphMode', 'speedRange', 'interpolateCheck', 'sbsLayoutMode', 'sbsFormat', 'alignView', 'sbsInputLayout', 'cropAspect', 'expWidth', 'expLoops', 'expVidSec', 'expFps', 'wmText', 'sbsWm', 'sbsWmColor', 'sbsQuality'], K = '3dtool-settings'; let st = {};
             try { st = JSON.parse(localStorage.getItem(K)) || {}; } catch (e) { }
             ids.forEach(id => {
                 const el = document.getElementById(id); if (!el) return;
                 if (id in st) { if (el.type === 'checkbox') el.checked = st[id]; else el.value = st[id]; el.dispatchEvent(new Event('input')); }
-                el.addEventListener('change', () => { st[id] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(K, JSON.stringify(st)); } catch (e) { } });
+                el.addEventListener('change', () => { try { st = JSON.parse(localStorage.getItem(K)) || {}; } catch (e) { st = {}; } st[id] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(K, JSON.stringify(st)); } catch (e) { } });
             });
         })();
 
@@ -1911,7 +1993,7 @@
         function checkComfort() {
             if (!imagesLoaded) return;
             const w = 256, s = w / frameL.width, h = Math.max(8, Math.round(frameL.height * s)), A = grayData(frameL, w, h), B = grayData(frameR, w, h);
-            const cx = Math.round(offsetX * s), cy = Math.round(offsetY * s), R = Math.round(w * 0.2), bw = Math.floor(w / 8), bh = Math.floor(h / 6), vals = [];
+            const cx = Math.round(offsetX * s), cy = Math.round(offsetY * s), R = Math.round(w * 0.2), bw = Math.floor(w / 8), bh = Math.floor(h / 6), vals = [], edges = [];
             for (let by = 0; by < 6; by++) for (let bx = 0; bx < 8; bx++) {
                 const x0 = bx * bw, y0 = by * bh; let e = 0;
                 for (let y = y0; y < y0 + bh; y++) for (let x = x0; x < x0 + bw; x++) e += A[y * w + x] * A[y * w + x];
@@ -1922,13 +2004,15 @@
                     for (let y = y0; y < y0 + bh; y += 2) { const yy = y - cy; if (yy < 0 || yy >= h) continue; for (let x = x0; x < x0 + bw; x += 2) { const xx = x - dx; if (xx < 0 || xx >= w) continue; sum += Math.abs(A[y * w + x] - B[yy * w + xx]); n++; } }
                     if (n > bw * bh / 8) { sum /= n; if (sum < best) { best = sum; bd = dx; } }
                 }
-                if (best < Infinity) vals.push(bd);
+                if (best < Infinity) { vals.push(bd); if (bx === 0 || bx === 7) edges.push(bd - cx); }
             }
             const el = document.getElementById('parallaxInfo');
             if (vals.length < 6) { el.textContent = 'Not enough texture to measure parallax.'; return; }
             vals.sort((a, b) => a - b);
             const pct = (vals[Math.ceil(vals.length * 0.95) - 1] - vals[Math.floor(vals.length * 0.05)]) / w * 100;
             el.textContent = `Disparity range ~${pct.toFixed(1)}% of width: ${pct <= 3 ? 'comfortable' : pct <= 5 ? 'noticeable, may tire some viewers' : 'high, likely uncomfortable'} (rule of thumb: up to ~3%).`;
+            const en = edges.length ? Math.max(...edges) : 0;   // nearer-than-window content touching the left/right frame edge
+            if (en > w * 0.01) el.textContent += ` Border warning: content at the frame edge is in front of the window (about ${(en / w * 100).toFixed(1)}% of width). Try a floating window of about ${Math.min(6, en / w * 100).toFixed(1)}% or move the convergence. (If the 3D looks inverted, use Swap L/R.)`;
         }
         document.getElementById('btnComfort').addEventListener('click', checkComfort);
 
@@ -1954,7 +2038,11 @@
         document.getElementById('btnMatchColors').addEventListener('click', toggleMatchColors);
 
         // --- ESC cancels a running GIF / video export ---
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && busy) { cancelReq = true; if (abortGif) abortGif(); showToast("Cancelling..."); } });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            if (busy) { cancelReq = true; if (abortGif) abortGif(); showToast("Cancelling..."); }
+            else { const ov = [...document.querySelectorAll('.ov')].pop(); if (ov) ov.remove(); }   // close the top-most window
+        });
 
         // crop-ratio change: refresh the view
         document.getElementById('cropAspect').addEventListener('change', () => refreshView());
@@ -1974,7 +2062,7 @@
         const centreRel = (e) => { const r = viewBox.getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
         viewBox.addEventListener('wheel', (e) => { if (!imagesLoaded) return; e.preventDefault(); const [cx, cy] = centreRel(e); zoomAt(view.z * Math.exp(-e.deltaY * 0.0015), cx, cy); }, { passive: false });
         const ptrs = new Map(); let lastDist = 0;
-        viewBox.addEventListener('pointerdown', (e) => { if (!imagesLoaded) return; ptrs.set(e.pointerId, [e.clientX, e.clientY]); viewBox.setPointerCapture(e.pointerId); lastDist = 0; });
+        viewBox.addEventListener('pointerdown', (e) => { if (!imagesLoaded || e.target.closest('button, input, select, label, summary')) return; ptrs.set(e.pointerId, [e.clientX, e.clientY]); viewBox.setPointerCapture(e.pointerId); lastDist = 0; });
         viewBox.addEventListener('pointermove', (e) => {
             if (!ptrs.has(e.pointerId)) return; const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
             if (ptrs.size === 1 && view.z > 1) { view.x += e.clientX - prev[0]; view.y += e.clientY - prev[1]; applyView(); }
@@ -1985,7 +2073,7 @@
             }
         });
         ['pointerup', 'pointercancel'].forEach(t => viewBox.addEventListener(t, (e) => { ptrs.delete(e.pointerId); lastDist = 0; }));
-        viewBox.addEventListener('dblclick', () => { view.z = 1; applyView(); });
+        viewBox.addEventListener('dblclick', (e) => { if (e.target.closest('button, input, select, label')) return; view.z = 1; applyView(); });
         document.addEventListener('keydown', (e) => { if (e.key === '0' && imagesLoaded && !e.ctrlKey && !e.metaKey) { view.z = 1; applyView(); } });
 
         // --- MPO INSPECTOR (structure report for debugging viewer compatibility) ---
@@ -2037,7 +2125,7 @@
             return L.join('\n');
         }
         function showReport(text) {
-            const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+            const o = document.createElement('div'); o.className = 'ov'; o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
             const b = document.createElement('div'); b.style.cssText = 'background:var(--panel-bg);color:var(--text-light);border:1px solid var(--panel-border);border-radius:var(--radius);max-width:780px;width:100%;max-height:88vh;display:flex;flex-direction:column;padding:16px;gap:10px';
             const pre = document.createElement('pre'); pre.textContent = text; pre.style.cssText = 'overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;flex:1;user-select:text';
             const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px';
@@ -2046,11 +2134,164 @@
             mk('Close', () => o.remove()); b.append(pre, row); o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); document.body.appendChild(o);
         }
         // Inspect button: only visible when the opened file is an MPO
-        function updateInspectBtn() { document.getElementById('btnInspect').style.display = openedMpoFile ? '' : 'none'; }
+        function isDiag() { return /[?&#]diag=yes(?:[&#]|$)/i.test(location.search + location.hash); }   // add ?diag=yes (or &diag=yes) to the URL
+        function updateInspectBtn() { document.getElementById('btnInspect').style.display = (isDiag() && openedMpoFile) ? '' : 'none'; }
         document.getElementById('btnInspect').addEventListener('click', async () => {
             if (!openedMpoFile) return;
             try { showReport(inspectMPO(await openedMpoFile.arrayBuffer())); } catch (err) { console.error(err); showToast("Could not read this file.", true); }
         });
+
+        // --- UNDO / REDO (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) ---
+        const hist = { a: [{ x: 0, y: 0, r: 0, k: 1 }], i: 0 };
+        function pushHist() {
+            const c = { x: offsetX, y: offsetY, r: rotDeg, k: scaleK }, l = hist.a[hist.i];
+            if (l && l.x === c.x && l.y === c.y && l.r === c.r && l.k === c.k) return;
+            hist.a = hist.a.slice(0, hist.i + 1); hist.a.push(c); if (hist.a.length > 50) hist.a.shift(); hist.i = hist.a.length - 1;
+        }
+        function applyHist(st) { rotDeg = st.r; scaleK = st.k; syncRS(); setOffsets(st.x, st.y, true); }
+        document.addEventListener('keydown', (e) => {
+            if (!(e.ctrlKey || e.metaKey) || !imagesLoaded || busy || document.querySelector('.ov')) return;
+            const k = e.key.toLowerCase();
+            if (k === 'z' && !e.shiftKey) { e.preventDefault(); if (hist.i > 0) { hist.i--; applyHist(hist.a[hist.i]); } }
+            else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); if (hist.i < hist.a.length - 1) { hist.i++; applyHist(hist.a[hist.i]); } }
+        });
+
+        // --- SHORTCUTS HELP (?) ---
+        function showShortcuts() {
+            if (document.querySelector('.ov.help')) return;
+            const rows = [['O / L / R', 'Open SBS or MPO file / left photo / right photo (start screen)'], ['Space', 'Play / pause the wigglegram'], ['W / A', 'Wigglegram / anaglyph view'],
+                ['Arrow keys', 'Nudge the alignment (Shift = 10 px)'], ['N', 'Auto-align'], ['E', 'Swap left / right'], ['Ctrl + Z / Y', 'Undo / redo alignment'],
+                ['S', 'Open the SBS export dialog (S again saves, X closes)'], ['M', 'Save MPO'], ['P', 'Save anaglyph PNG'], ['G', 'Save GIF'], ['V', 'Save video'],
+                ['F', 'Full screen'], ['H', 'Rule-of-thirds grid'], ['0', 'Reset zoom'], ['D', 'Light / dark theme'], ['X', 'Discard the project'], ['Esc', 'Cancel an export / close a window'], ['?', 'This help']];
+            if (isDiag()) rows.splice(15, 0, ['I', 'Copy diagnostics']);
+            const o = document.createElement('div'); o.className = 'ov help'; o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
+            const b = document.createElement('div'); b.style.cssText = 'background:var(--panel-bg);color:var(--text-light);border:1px solid var(--panel-border);border-radius:var(--radius);box-shadow:var(--shadow);max-width:460px;width:100%;max-height:88vh;overflow:auto;padding:20px';
+            let h = '<div style="font-weight:700;font-size:1.05rem;margin-bottom:14px">Keyboard shortcuts</div><div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:center;font-size:0.88rem">';
+            rows.forEach(([k, d]) => { h += `<span style="justify-self:start;background:var(--secondary);border:1px solid var(--panel-border);border-radius:6px;padding:2px 8px;font-weight:600;white-space:nowrap">${k}</span><span style="color:var(--text-muted)">${d}</span>`; });
+            b.innerHTML = h + '</div><button type="button" class="btn btn-outline" style="margin-top:18px;padding:8px 14px">Close</button>';
+            b.querySelector('button').onclick = () => o.remove(); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); o.appendChild(b); document.body.appendChild(o);
+        }
+        document.getElementById('btnHelp').addEventListener('click', showShortcuts);
+        document.addEventListener('keydown', (e) => { if (e.key === '?' && !e.ctrlKey && !e.metaKey && !document.querySelector('.ov')) showShortcuts(); });
+
+        // --- APNG (24-bit animated PNG; zlib via the browser's CompressionStream, no libraries) ---
+        async function buildApng(frames, w, h, delayMs, loops) {
+            const u32 = (v) => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255], enc = new TextEncoder(), parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])];
+            const chunk = (type, data) => {
+                const t = enc.encode(type), body = new Uint8Array(4 + data.length); body.set(t, 0); body.set(data, 4);
+                parts.push(new Uint8Array([...u32(data.length)]), body, new Uint8Array(u32(crc32(body))));
+            };
+            const deflate = async (raw) => new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+            chunk('IHDR', new Uint8Array([...u32(w), ...u32(h), 8, 6, 0, 0, 0]));
+            chunk('acTL', new Uint8Array([...u32(frames.length), ...u32(loops || 0)]));
+            let seq = 0;
+            for (let i = 0; i < frames.length; i++) {
+                chunk('fcTL', new Uint8Array([...u32(seq++), ...u32(w), ...u32(h), ...u32(0), ...u32(0), (delayMs >> 8) & 255, delayMs & 255, 0x03, 0xE8, 0, 0]));
+                const raw = new Uint8Array((w * 4 + 1) * h);
+                for (let y = 0; y < h; y++) raw.set(frames[i].subarray(y * w * 4, (y + 1) * w * 4), y * (w * 4 + 1) + 1);   // filter byte 0 per row
+                const z = await deflate(raw);
+                if (i === 0) chunk('IDAT', z); else { const d = new Uint8Array(4 + z.length); d.set(u32(seq++), 0); d.set(z, 4); chunk('fdAT', d); }
+            }
+            chunk('IEND', new Uint8Array(0));
+            return new Blob(parts, { type: 'image/png' });
+        }
+        document.getElementById('btnExportAPNG').addEventListener('click', (e) => {
+            if (typeof CompressionStream === 'undefined') { showToast("This browser cannot create APNG (no CompressionStream).", true); return; }
+            withBusy(e.currentTarget, 'Generating APNG...', 'APNG', async () => {
+                await nextFrames();
+                const speed = parseInt(speedRange.value), smooth = interpolateCheck.checked, n = smooth ? Math.max(2, Math.min(6, Math.floor(speed / 20))) : 1;
+                const c = getCropRect(false); let W = c.w, H = c.h; const MAXW = parseInt(document.getElementById('expWidth').value);
+                if (W > MAXW) { H = Math.max(1, Math.round(H * MAXW / W)); W = MAXW; }
+                const off = mkCanvas(W, H), ctx = off.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high'; const frames = [];
+                const grab = () => { wm(ctx, W, H); frames.push(ctx.getImageData(0, 0, W, H).data); };
+                if (!smooth) { for (const wh of ['L', 'R']) { ctx.clearRect(0, 0, W, H); drawAligned(ctx, wh, W, H, c, false); grab(); } }
+                else for (let j = 0; j < 2; j++) for (let i = 0; i < n; i++) {
+                    ctx.globalAlpha = 1; ctx.clearRect(0, 0, W, H); drawAligned(ctx, j === 0 ? 'L' : 'R', W, H, c, false);
+                    ctx.globalAlpha = Math.sin((i / n) * (Math.PI / 2)); drawAligned(ctx, j === 0 ? 'R' : 'L', W, H, c, false); ctx.globalAlpha = 1; grab();
+                }
+                const blob = await buildApng(frames, W, H, Math.min(65535, Math.max(20, Math.round(smooth ? speed / n : speed))), parseInt(document.getElementById('expLoops').value));
+                await saveBlob(blob, `wiggle_${stamp()}.png`); showToast("Animated PNG saved successfully!");
+            });
+        });
+
+        // --- FULL SCREEN (F) for the current view ---
+        function toggleFullscreen() {
+            const el = document.querySelector('.canvas-container'), cur = document.fullscreenElement || document.webkitFullscreenElement;
+            if (cur) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+            else { const r = el.requestFullscreen || el.webkitRequestFullscreen; if (r) r.call(el); else showToast("Full screen is not supported here.", true); }
+        }
+        document.addEventListener('keydown', (e) => { if ((e.key === 'f' || e.key === 'F') && imagesLoaded && !e.ctrlKey && !e.metaKey && !e.repeat && !document.querySelector('.ov') && !sbsModal.classList.contains('active')) toggleFullscreen(); });
+
+        // --- WATERMARK (text, bottom-right; drawn after the pair is composed so it has zero parallax) ---
+        function wmBorder(ctx, x, y, iw, ih, pad, t, color) {   // text in the border strip under one photo; same relative spot under both photos = zero parallax
+            const fs = Math.max(10, Math.round(pad * 0.5));
+            ctx.save(); ctx.font = `600 ${fs}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
+            ctx.fillText(t, x + iw, y + ih + pad * 0.5, iw); ctx.restore();   // maxWidth keeps long text inside the photo's width
+        }
+        function wm(ctx, w, h) {
+            const t = (document.getElementById('wmText').value || '').trim(); if (!t) return;
+            const fs = Math.max(10, Math.round(w * 0.03));
+            ctx.save(); ctx.globalAlpha = 1; ctx.font = `600 ${fs}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+            ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = fs * 0.2; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(t, w - fs * 0.6, h - fs * 0.5); ctx.restore();
+        }
+
+        // --- IMAGE INFO ---
+        document.getElementById('btnInfo').addEventListener('click', () => {
+            if (!imagesLoaded) return;
+            const ex = exifBuf ? readExifTags(exifBuf) : { ifd0: {}, exif: {} }, g = (m, t) => m[t] ? m[t].v : null, rat = (v) => (v && v[0] && v[0][1]) ? v[0][0] / v[0][1] : null;
+            const exp = rat(g(ex.exif, 0x829A)), fn = rat(g(ex.exif, 0x829D)), fl = rat(g(ex.exif, 0x920A)), iso = g(ex.exif, 0x8827), mk = g(ex.ifd0, 0x010F), md = g(ex.ifd0, 0x0110), ln = g(ex.exif, 0xA434), dt = g(ex.exif, 0x9003);
+            const lossless = origL && origR && !colorBackup && !rotDeg && !floatPct && scaleK === 1 && !offsetX && !offsetY && cropRatio() === 0;
+            const L = ['IMAGE INFO', '', `Left frame:  ${frameL.width} x ${frameL.height} px`, `Right frame: ${frameR.width} x ${frameR.height} px`, `Live preview scale: ${Math.round(pvScale * 100)}%`,
+                `Source: ${openedMpoFile ? 'MPO (' + openedMpoFile.name + ')' : 'photos or a single image'}`,
+                `Lossless MPO export possible: ${lossless ? 'yes' : 'no (alignment, crop, rotation or color change in use)'}`,
+                `Alignment: X ${offsetX}, Y ${offsetY}, rotation ${rotDeg.toFixed(2)} deg, scale ${(scaleK * 100).toFixed(2)}%`, ''];
+            if (mk || md) L.push(`Camera: ${mk || '?'} ${md || ''}`.trim()); if (ln) L.push(`Lens: ${ln}`); if (dt) L.push(`Taken: ${dt}`);
+            if (exp) L.push(`Exposure: ${exp < 1 ? '1/' + Math.round(1 / exp) : exp} s`); if (fn) L.push(`Aperture: f/${fn.toFixed(1)}`); if (fl) L.push(`Focal length: ${fl} mm`); if (iso) L.push(`ISO: ${iso[0]}`);
+            if (!(mk || md || exp || iso)) L.push('No camera EXIF available for this source.');
+            showReport(L.join('\n'));
+        });
+
+        // --- FLOATING WINDOW slider ---
+        document.getElementById('alignFloat').addEventListener('input', (e) => {
+            floatPct = parseFloat(e.target.value); document.getElementById('valFloat').textContent = floatPct.toFixed(1); if (!isAligning) refreshView();
+        });
+
+        // --- RULE-OF-THIRDS GRID (follows the image, zoom and pan) ---
+        let gridOn = false;
+        const gridEl = document.createElement('div');
+        gridEl.style.cssText = 'position:absolute;pointer-events:none;display:none;z-index:5';
+        gridEl.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 3 3" preserveAspectRatio="none"><g stroke="rgba(255,255,255,.65)" stroke-width="1" vector-effect="non-scaling-stroke"><line x1="1" y1="0" x2="1" y2="3" vector-effect="non-scaling-stroke"/><line x1="2" y1="0" x2="2" y2="3" vector-effect="non-scaling-stroke"/><line x1="0" y1="1" x2="3" y2="1" vector-effect="non-scaling-stroke"/><line x1="0" y1="2" x2="3" y2="2" vector-effect="non-scaling-stroke"/></g></svg>';
+        if (getComputedStyle(viewBox).position === 'static') viewBox.style.position = 'relative';
+        viewBox.appendChild(gridEl);
+        function placeGrid() {
+            if (!gridOn) return;
+            if (!imagesLoaded) { setGrid(false); return; }
+            const r = (currentTab === 'wiggle' ? wiggleCanvas : anaglyphCanvas).getBoundingClientRect(), b = viewBox.getBoundingClientRect();
+            gridEl.style.left = (r.left - b.left) + 'px'; gridEl.style.top = (r.top - b.top) + 'px'; gridEl.style.width = r.width + 'px'; gridEl.style.height = r.height + 'px';
+            requestAnimationFrame(placeGrid);
+        }
+        function setGrid(on) { gridOn = on; document.getElementById('gridToggle').checked = on; gridEl.style.display = on ? 'block' : 'none'; if (on) placeGrid(); }
+        document.getElementById('gridToggle').addEventListener('change', (e) => setGrid(e.target.checked));
+        document.addEventListener('keydown', (e) => { if ((e.key === 'h' || e.key === 'H') && imagesLoaded && !e.ctrlKey && !e.metaKey && !e.repeat && !document.querySelector('.ov')) setGrid(!gridOn); });
+
+        // --- BATCH: vertical auto-align per pair ---
+        function batchVAlign(pr) {
+            const W = 256, s = W / pr.L.width, H = Math.max(8, Math.round(pr.L.height * s)), A = grayData(pr.L, W, H), B = grayData(pr.R, W, H), R = Math.round(H * 0.08) + 1;
+            let best = Infinity, bdy = 0;
+            for (let dy = -R; dy <= R; dy++) {
+                const y0 = Math.max(0, dy), y1 = Math.min(H, H + dy); let sum = 0, n = 0;
+                for (let y = y0; y < y1; y += 2) { const rb = (y - dy) * W; for (let x = 0; x < W; x += 2) { sum += Math.abs(A[y * W + x] - B[rb + x]); n++; } }
+                if (n) { sum /= n; if (sum < best) { best = sum; bdy = dy; } }
+            }
+            const dy = Math.round(bdy / s), w = pr.L.width, h = pr.L.height, ch = h - Math.abs(dy); if (!dy || ch < 2) return;
+            const L2 = mkCanvas(w, ch), R2 = mkCanvas(w, ch);
+            L2.getContext('2d').drawImage(pr.L, 0, Math.max(0, dy), w, ch, 0, 0, w, ch); R2.getContext('2d').drawImage(pr.R, 0, Math.max(0, dy) - dy, w, ch, 0, 0, w, ch);
+            pr.L = L2; pr.R = R2; pr.b1 = pr.b2 = null;   // pixels changed: no lossless pass-through
+        }
+        function batchName(pattern, fileName, i, fmt, outName) {
+            const ext = outName.slice(outName.lastIndexOf('.')), stem = fileName.replace(/\.[^.]+$/, '');
+            return pattern.replace(/\{name\}/g, stem).replace(/\{n\}/g, String(i + 1).padStart(3, '0')).replace(/\{fmt\}/g, fmt).replace(/[\\/:*?"<>|]/g, '_') + ext;
+        }
 
         // --- ROTATION / SCALE SLIDERS ---
         function updateRS() {
@@ -2103,18 +2344,19 @@
             L.getContext('2d').drawImage(img, a[0], a[1], w, h, 0, 0, w, h); R.getContext('2d').drawImage(img, b[0], b[1], w, h, 0, 0, w, h);
             return { L, R, b1: null, b2: null, exif: null };
         }
-        async function batchRun(files, fmt, status) {
+        async function batchRun(files, fmt, status, opt) {
             busy = true; cancelReq = false; const out = [], used = new Set(), failed = [];
             try {
                 for (let i = 0; i < files.length; i++) {
                     if (cancelReq) break;
                     const f = files[i]; status.textContent = `Converting ${i + 1} of ${files.length}: ${f.name}  (Esc cancels)`; await nextFrames();
                     try {
-                        const pr = await batchPair(f), w = pr.L.width, h = pr.L.height; let base = f.name.replace(/\.[^.]+$/, ''), n = 1; while (used.has(base)) base = `${f.name.replace(/\.[^.]+$/, '')}_${++n}`; used.add(base);
+                        const pr = await batchPair(f); if (opt && opt.vAlign) batchVAlign(pr); const w = pr.L.width, h = pr.L.height; let base = f.name.replace(/\.[^.]+$/, ''), n = 1; while (used.has(base)) base = `${f.name.replace(/\.[^.]+$/, '')}_${++n}`; used.add(base);
                         let data, name;
                         if (fmt === 'mpo') {
                             const j1 = pr.b1 || await canvasToJpegBuffer(pr.L), j2 = pr.b2 || await canvasToJpegBuffer(pr.R), e1 = findJpegEnd(j1, 0), e2 = findJpegEnd(j2, 0);
-                            data = new Uint8Array(createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, pr.exif)); name = base + '.mpo';
+                            const [t1, t2] = await Promise.all([makeThumb(pr.L), makeThumb(pr.R)]);
+                            data = new Uint8Array(createMPOBuffer(e1 > 0 ? j1.slice(0, e1) : j1, e2 > 0 ? j2.slice(0, e2) : j2, pr.exif, t1, t2)); name = base + '.mpo';
                         } else {
                             const c = mkCanvas(fmt === 'sbs' ? w * 2 : w, h), x = c.getContext('2d');
                             if (fmt === 'sbs') { x.drawImage(pr.L, 0, 0); x.drawImage(pr.R, w, 0); }
@@ -2124,6 +2366,7 @@
                             }
                             data = new Uint8Array(await canvasToJpegBuffer(c, 0.92)); name = base + (fmt === 'sbs' ? '_sbs.jpg' : '_anaglyph.jpg');
                         }
+                        if (opt && opt.pattern) { let cand = batchName(opt.pattern, f.name, i, fmt, name), k = 1; const ext = cand.slice(cand.lastIndexOf('.')), stem = cand.slice(0, cand.lastIndexOf('.')); while (out.some(o => o.name === cand)) cand = `${stem}_${++k}${ext}`; name = cand; }
                         out.push({ name, data });
                     } catch (e) { console.error(e); failed.push(f.name); }
                 }
@@ -2137,17 +2380,26 @@
         document.getElementById('btnBatch').addEventListener('click', () => document.getElementById('inputBatch').click());
         document.getElementById('inputBatch').addEventListener('change', (e) => {
             const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
-            const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+            const o = document.createElement('div'); o.className = 'ov'; o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
             const b = document.createElement('div'); b.style.cssText = 'background:var(--panel-bg);color:var(--text-light);border:1px solid var(--panel-border);border-radius:var(--radius);max-width:520px;width:100%;display:flex;flex-direction:column;padding:16px;gap:12px';
             const title = document.createElement('div'); title.textContent = `Batch convert ${files.length} file(s) to a ZIP`;
             const sel = document.createElement('select'); sel.innerHTML = '<option value="mpo">MPO (lossless when possible)</option><option value="sbs">Full side-by-side JPEG</option><option value="ana">Anaglyph (Dubois) JPEG</option>';
             const note = document.createElement('div'); note.style.cssText = 'font-size:12px;color:var(--text-muted)'; note.textContent = 'Pairs are converted as they are (no alignment). Single non-MPO files use the layout chosen on the start screen. The ZIP is built in memory, so keep batches moderate.';
+            const pat = document.createElement('input'); pat.type = 'text'; pat.value = '{name}'; pat.title = 'File name pattern: {name} {n} {fmt}'; pat.style.cssText = 'padding:8px;border-radius:6px;border:1px solid var(--panel-border);background:var(--bg-dark);color:var(--text-light)';
+            const vaLabel = document.createElement('label'); vaLabel.style.cssText = 'font-size:13px'; const va = document.createElement('input'); va.type = 'checkbox'; vaLabel.append(va, ' Fix vertical misalignment of each pair automatically');
+            const patNote = document.createElement('div'); patNote.style.cssText = 'font-size:12px;color:var(--text-muted)'; patNote.textContent = 'File name pattern. Tokens: {name} original name, {n} counter, {fmt} format.';
             const status = document.createElement('div'); status.style.cssText = 'font-size:12px;word-break:break-all'; const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px';
             const go = document.createElement('button'); go.className = 'btn'; go.style.padding = '8px 14px'; go.textContent = 'Start';
             const close = document.createElement('button'); close.className = 'btn btn-outline'; close.style.padding = '8px 14px'; close.textContent = 'Close'; close.onclick = () => { if (!busy) o.remove(); };
-            go.onclick = async () => { if (busy) return; go.disabled = sel.disabled = true; await batchRun(files, sel.value, status); go.disabled = sel.disabled = false; status.textContent = 'Done.'; };
-            row.append(go, close); b.append(title, sel, note, status, row); o.appendChild(b); document.body.appendChild(o);
+            go.onclick = async () => { if (busy) return; go.disabled = sel.disabled = true; await batchRun(files, sel.value, status, { vAlign: va.checked, pattern: pat.value.trim() }); go.disabled = sel.disabled = false; status.textContent = 'Done.'; };
+            row.append(go, close); b.append(title, sel, patNote, pat, vaLabel, note, status, row); o.appendChild(b); document.body.appendChild(o);
         });
+
+        // Typing in a text field (watermark, file name pattern...) must never trigger a hotkey
+        const typingTarget = (t) => t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable || (t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes(t.type)));
+        ['keydown', 'keyup'].forEach(ev => window.addEventListener(ev, (e) => { if (typingTarget(e.target)) e.stopPropagation(); }, true));
+
+        document.addEventListener('change', (e) => { if (e.target && e.target.tagName === 'SELECT') e.target.blur(); });
 
         // stop Space from also "clicking" a focused button after the shortcut already handled it
         document.addEventListener('keyup', (e) => { if (e.key === ' ' && screenEditor.classList.contains('active')) e.preventDefault(); });
