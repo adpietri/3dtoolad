@@ -124,7 +124,6 @@ Current versions of **Chrome, Edge, Firefox and Safari** (2023 or newer recommen
 
 * GPU acceleration uses WebGL2, available in all current major browsers. Without it, everything still works on the CPU.
 * Video is recorded with the browser's own encoder (MP4 where available, otherwise WebM).
-* On iPad/iPhone, photos up to about 24 megapixels per image are recommended because of Safari's memory limits.
 * Run `index.html?selftest=yes` to check every feature in your browser.
 
 ---
