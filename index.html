@@ -766,13 +766,13 @@
         // ============================================================
         const APP = {
             name: '3DToolAD',
-            version: '4.8',
+            version: '4.9',
             stage: 'Beta',                          // shown in the header; '' hides it
             repo: 'https://github.com/adpietri/3dtoolad',   // enables "Report a problem" (opens a new issue there)
             id: '3dToolAD'                          // file-format tag of saved alignment files: do NOT change, old files would stop loading
         };
-        APP.label = APP.name + ' ' + APP.version;   // "3DToolAD 4.8"
-        APP.header = APP.name + ' v' + APP.version + (APP.stage ? ' (' + APP.stage + ')' : '');   // "3DToolAD v4.8 (Beta)"
+        APP.label = APP.name + ' ' + APP.version;   // "3DToolAD 4.9"
+        APP.header = APP.name + ' v' + APP.version + (APP.stage ? ' (' + APP.stage + ')' : '');   // "3DToolAD v4.9 (Beta)"
 
         // shared state declared up front so no function can ever touch it before initialization
         const DBG = { force: 'auto', align: null, rebuild: null, mem: null, log: null, fps: null };   // debug mode only: forced renderer and last measurements ('auto' = normal behaviour)
@@ -3365,7 +3365,7 @@
             if (document.querySelector('.ov.about')) return;
             const credits = CREDITS.map(([area, items]) => `<div style="margin-top:8px;font-weight:600">${area}</div><ul style="margin:2px 0 0 18px;padding:0">` + items.map(t => `<li>${t}</li>`).join('') + '</ul>').join('');
             openCard('about', `<div style="font-weight:700;font-size:1.1rem">${APP.header}</div><p style="margin-top:10px;font-size:0.9rem;color:var(--text-muted)">Align and export stereoscopic 3D photos. Everything runs inside your browser: your photos are never uploaded, and the program makes no network requests.</p><p style="margin-top:8px;font-size:0.85rem;color:var(--text-muted)">Free software under the GNU GPL v3 or later. Copyright (C) 2026 adpietri.</p>`
-                + `<details style="margin-top:10px;font-size:0.8rem;color:var(--text-muted)"><summary style="cursor:pointer;font-size:0.85rem;color:var(--text-light)">Credits: published methods this program builds on</summary><p style="margin:6px 0 0">All of 3DToolAD's code is its own (no third-party code or libraries). It implements these published methods and open formats, with thanks to their authors:</p>${credits}</details>`,
+                + `<details style="margin-top:10px;font-size:0.8rem;color:var(--text-muted)"><summary style="cursor:pointer;font-size:0.85rem;color:var(--text-light)">Credits: published methods this program builds on</summary><p style="margin:6px 0 0">All of 3DToolAD's code was written for this project — no third-party code or libraries are included. It implements these published methods and open formats, with thanks to their authors:</p>${credits}</details>`,
                 [['Report a problem', reportProblem], ['Run self-test', runSelfTest], ['Close']]);
         }
 
