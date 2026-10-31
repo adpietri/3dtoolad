@@ -1,7 +1,7 @@
 # 3dtoolad
 3DToolAD - Stereoscopic 3D Image Creator
 
-![Version](https://img.shields.io/badge/version-4.8_Beta-orange.svg)
+![Version](https://img.shields.io/badge/version-4.9_Beta-orange.svg)
 ![License](https://img.shields.io/badge/license-GPLv3-blue.svg)
 
 **3DToolAD** is a lightweight, fully-featured web application for creating, aligning, editing and exporting stereoscopic 3D images. Whether you are digitizing historical stereocards, working with MPO files, or creating modern wigglegrams, this tool provides a complete workspace directly in your browser — in a **single HTML file**, with no installation and no dependencies.
@@ -195,7 +195,7 @@ Open the `?` panel and choose **Report a problem**. It copies a short diagnostic
 
 ## 🙏 Credits
 
-All of 3DToolAD's code is its own — no third-party code or libraries are included. It implements these published methods and open formats, with thanks to their authors (also listed in the app under **? > About > Credits**):
+All of 3DToolAD's code was written for this project — no third-party code or libraries are included. It implements these published methods and open formats, with thanks to their authors (also listed in the app under **? > About > Credits**):
 
 **Anaglyph**
 * Eric Dubois — least-squares anaglyph matrices (2001)
