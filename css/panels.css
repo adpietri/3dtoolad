@@ -1,0 +1,36 @@
+/* 3DToolAD - Copyright (C) 2026 adpietri - GPL v3 or later.
+   Folding sections of the left panels (js/26-panels.js) and the Curves graph (js/25-curves.js). */
+
+.pnl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.pnl-btn {
+    flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    font: 600 15px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; text-transform: none;
+    color: var(--text-muted); background: transparent; border: 1px solid var(--panel-border); border-radius: 6px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.pnl-btn:hover, .pnl-btn:focus-visible { color: var(--text-light); border-color: var(--text-muted); outline: none; }
+.pnl-hide-p, .pnl-hide-s { display: none !important; }
+.panel-title.pnl-folded { margin-bottom: 0; }
+.indiv-disabled .pnl-head { pointer-events: auto; }   /* sections fold even before a photo is selected */
+
+.crv-chs { display: flex; gap: 4px; margin-bottom: 8px; }
+.crv-ch {
+    flex: 1; min-width: 0; padding: 6px 4px; font: inherit; font-size: 0.78rem; cursor: pointer;
+    color: var(--text-muted); background: var(--bg-dark); border: 1px solid var(--panel-border); border-radius: 6px; transition: color 0.15s, border-color 0.15s;
+}
+.crv-ch:hover { color: var(--text-light); }
+.crv-ch[aria-pressed="true"] { color: var(--text-light); border-color: var(--primary); box-shadow: inset 0 -2px 0 var(--primary); }
+.crv-ch[data-ch="r"][aria-pressed="true"] { border-color: #ef4444; box-shadow: inset 0 -2px 0 #ef4444; }
+.crv-ch[data-ch="g"][aria-pressed="true"] { border-color: #22c55e; box-shadow: inset 0 -2px 0 #22c55e; }
+.crv-ch[data-ch="b"][aria-pressed="true"] { border-color: #3b82f6; box-shadow: inset 0 -2px 0 #3b82f6; }
+.crv-plot {
+    display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; touch-action: none; cursor: crosshair;
+    background: var(--bg-dark); border: 1px solid var(--panel-border); border-radius: 6px;
+}
+.crv-plot:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.crv-read { margin-top: 6px; font-size: 0.78rem; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.crv-read b { color: var(--text-light); font-weight: 600; display: inline-block; min-width: 2.2em; text-align: left; }
+.crv-hint { margin: 4px 0 8px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
+
+/* start-up check: this file was found (see index.html) */
+:root { --part-panels: 1; }

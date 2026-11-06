@@ -1,0 +1,32 @@
+/* 3DToolAD - Copyright (C) 2026 adpietri - GPL v3 or later.
+   The value box of every slider, and the colour tracks of the colour sliders (js/24-sliders.js). */
+
+.sv-box {
+    width: 5.4em; padding: 2px 6px; font: inherit; font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: right;
+    color: var(--text-light); background: var(--bg-dark); border: 1px solid var(--panel-border); border-radius: 6px;
+    transition: border-color 0.15s;
+}
+.sv-box:hover { border-color: var(--text-muted); }
+.sv-box:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25); }
+.sv-wrap { display: inline; text-align: right; line-height: 1.6; }   /* the text after the number ("%", "° ", an explanation) flows right after the box */
+.sv-wrap .sv-box { vertical-align: middle; margin-right: 3px; }
+.sv-old { display: none !important; }      /* the number the program still writes; the box shows it now */
+.sv-unit { min-width: 1em; }
+.sv-row { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+
+/* colour sliders: the track is the colour itself (the browser's own track would hide it) */
+input[type="range"].sv-color {
+    -webkit-appearance: none; appearance: none; height: 10px; border-radius: 5px;
+    border: 1px solid var(--panel-border); cursor: pointer;
+}
+input[type="range"].sv-color::-webkit-slider-runnable-track { height: 10px; background: transparent; border: none; }
+input[type="range"].sv-color::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -5px; border-radius: 50%;
+    background: #fff; border: 2px solid #3f3f46; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+input[type="range"].sv-color::-moz-range-track { height: 10px; background: transparent; border: none; }
+input[type="range"].sv-color::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #3f3f46; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+input[type="range"].sv-color:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+/* start-up check: this file was found (see index.html) */
+:root { --part-sliders: 1; }

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<!--
+    3DToolAD - Stereoscopic 3D Image Creation Tool
+    Copyright (C) 2026 adpietri
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src blob: data:; media-src blob:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>3DToolAD</title>
+    <script>
+        // Start-up check, part 1: notes every file that fails to load or stops with an error while starting.
+        // Each file in css/ and js/ marks itself as loaded; part 2 (end of the page) compares and explains what is missing.
+        window.APP_PARTS = []; window.APP_BOOT = { errs: [] };
+        window.APP_BOOT.onErr = function (e) {
+            const t = e.target;
+            if (t && t !== window && t.dataset && t.dataset.part) APP_BOOT.errs.push([t.dataset.part, 'not found']);   // a <script> or <link> that could not be read
+            else if (e.filename) APP_BOOT.errs.push([e.filename, e.message || 'error']);                              // an error while a file was starting
+        };
+        window.addEventListener('error', APP_BOOT.onErr, true);
+    </script>
+    <link rel="stylesheet" href="css/app.css" data-part="css/app.css">
+    <link rel="stylesheet" href="css/history.css" data-part="css/history.css">
+    <link rel="stylesheet" href="css/sliders.css" data-part="css/sliders.css">
+    <link rel="stylesheet" href="css/panels.css" data-part="css/panels.css">
+    <link rel="stylesheet" href="css/prefs.css" data-part="css/prefs.css">
+</head>
+<body>
+
+    <div id="toast">Notification</div>
+
+    <!-- Top Navbar -->
+    <div class="navbar">
+        <div class="navbar-brand">
+            3DToolAD
+        </div>
+        <div class="top-actions">
+            <button id="btnTools" title="Tools" aria-label="Tools"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"></rect><path d="M9 9V6.5A1.5 1.5 0 0 1 10.5 5h3A1.5 1.5 0 0 1 15 6.5V9"></path><path d="M3 14h7M14 14h7"></path><rect x="10" y="12.5" width="4" height="3" rx="0.8"></rect></svg></button>
+            <button id="btnSettings" type="button" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.2 4.6 L10.4 2.1 L13.6 2.1 L13.8 4.6 L16.6 6.0 L18.7 4.6 L20.7 7.1 L18.9 8.8 L19.6 11.8 L22.0 12.7 L21.3 15.7 L18.8 15.4 L16.9 17.8 L17.7 20.2 L14.9 21.6 L13.5 19.4 L10.5 19.4 L9.1 21.6 L6.3 20.2 L7.1 17.8 L5.2 15.4 L2.7 15.7 L2.0 12.7 L4.4 11.8 L5.1 8.8 L3.3 7.1 L5.3 4.6 L7.4 6.0Z"></path><rect x="9.6" y="9.6" width="4.8" height="4.8" rx="1.2"></rect></svg></button>
+            <button id="btnHelp" title="Keyboard shortcuts (?)" style="font-weight: 700; font-size: 1.1rem;">?</button>
+            <button id="btnClear" class="btn btn-danger" style="width: auto; padding: 8px 14px; font-size: 0.85rem; display: none;">Clear<span class="key-hint"> (X)</span></button>
+        </div>
+    </div>
+
+    <!-- Screen 1: UPLOAD -->
+    <div id="screenUpload" class="screen upload-screen active">
+        <div class="upload-card">
+            <h2>Start a New Project</h2>
+            <p>Choose an option below.</p>
+            
+            <label class="btn" style="padding: 16px; font-size: 1.05rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6l2 2.2h7.4A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"></path><path d="M12 17v-6.2M9.2 13.4L12 10.6l2.8 2.8"></path></svg>
+                Load SBS or MPO File (O)
+                <input type="file" id="inputSbs" accept="image/*,.mpo,.jps,.3dta">
+            </label>
+            <div class="control-group" style="margin-top: 14px; text-align: left;">
+                <label>Layout of a single non-MPO file</label>
+                <select id="sbsInputLayout">
+                    <option value="sbs" selected>Side-by-side (left | right)</option>
+                    <option value="cross">Cross-eye (right | left)</option>
+                    <option value="tb">Top-bottom (left over right)</option>
+                </select>
+            </div>
+            <p style="margin: 14px 0 0; font-size: 0.8rem;">You can also drag &amp; drop one file (MPO / SBS / project) or two photos (left, right).</p>
+            <button type="button" class="btn btn-outline" id="btnOpenProject" style="margin-top: 12px; padding: 8px 14px;">Open project (.3dta)...</button>
+            <input type="file" id="inputProject" style="display: none;">
+            
+            <div style="margin: 30px 0; color: var(--panel-border); display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <span style="flex: 1; height: 1px; background: var(--panel-border);"></span>
+                <span style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">OR LOAD SEPARATE IMAGES</span>
+                <span style="flex: 1; height: 1px; background: var(--panel-border);"></span>
+            </div>
+
+            <div class="upload-grid">
+                <label class="btn btn-outline" id="lblInputLeft" style="flex-direction: column; padding: 25px 10px;">
+                    <span id="textInputLeft">1. Left Photo (L)</span>
+                    <span class="status-badge" id="badgeLeft">Waiting...</span>
+                    <input type="file" id="inputLeft" accept="image/*">
+                </label>
+                <label class="btn btn-outline" id="lblInputRight" style="flex-direction: column; padding: 25px 10px;">
+                    <span id="textInputRight">2. Right Photo (R)</span>
+                    <span class="status-badge" id="badgeRight">Waiting...</span>
+                    <input type="file" id="inputRight" accept="image/*">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 2: EDITOR -->
+    <div id="screenEditor" class="screen editor-screen">
+        
+        <div class="sidebar">
+            <div class="panel-section" id="workspaceToolsPanel">
+                <div class="panel-title">Workspace Tools</div>
+                <label class="checkbox-label" style="background: var(--bg-dark); padding: 14px; border-radius: 8px; border: 1px solid var(--panel-border); margin-top: 0; transition: background-color 0.3s;">
+                    <input type="checkbox" id="toggleAdvanced">
+                    <span style="font-weight: 500; color: var(--primary);">Alignment Mode (Ghosting)</span>
+                </label>
+            </div>
+
+            <div class="panel-section" id="alignmentPanel" style="display: none; background: rgba(99, 102, 241, 0.05);">
+                <div class="panel-title" style="color: var(--primary);">Axis Alignment</div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Align the Right image perfectly over the Left.</p>
+                <div class="control-group">
+                    <label>X-Axis (Horizontal) <span id="valX" style="color:var(--primary); font-weight: bold;">0</span></label>
+                    <input type="range" id="alignX" min="-200" max="200" value="0">
+                </div>
+                <div class="control-group">
+                    <label>Y-Axis (Vertical) <span id="valY" style="color:var(--primary); font-weight: bold;">0</span></label>
+                    <input type="range" id="alignY" min="-200" max="200" value="0">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Rotation (right image) <span id="valRot">0.00</span>&deg;</label>
+                    <input type="range" id="alignRot" min="-5" max="5" step="0.05" value="0">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Scale (right image) <span id="valScale">100</span>%</label>
+                    <input type="range" id="alignScale" min="95" max="105" step="0.05" value="100">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Floating window <span id="valFloat">0.0</span>% (black edge bars, moves the frame forward)</label>
+                    <input type="range" id="alignFloat" min="0" max="6" step="0.1" value="0">
+                    <label style="margin-top: 6px;"><input type="checkbox" id="floatSoft"> Soft (diffuse) inner edge</label>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label><input type="checkbox" id="gridToggle"> Rule-of-thirds grid (H)</label>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Alignment View</label>
+                    <select id="alignView">
+                        <option value="ghost" selected>Ghost (50% overlay)</option>
+                        <option value="diff">Difference (dark = aligned)</option>
+                        <option value="checker">Checkerboard</option>
+                        <option value="guides">Ghost + horizontal guides</option>
+                    </select>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Crop Aspect Ratio</label>
+                    <select id="cropAspect">
+                        <option value="free" selected>Free (largest common area)</option>
+                        <option value="custom">Custom crop (drag handles)</option>
+                        <option value="16:9">16:9</option><option value="3:2">3:2</option><option value="4:3">4:3</option>
+                        <option value="1:1">1:1</option><option value="4:5">4:5</option><option value="9:16">9:16</option>
+                    </select>
+                </div>
+                <div class="control-group" id="pairFitRow" style="margin-top: 10px; display: none;">
+                    <label for="pairFit">Size difference</label>
+                    <select id="pairFit" title="The two photos are not the same size: cut both to the area they share, or keep them whole with black borders">
+                        <option value="crop">Crop to the common area</option>
+                        <option value="pad">Add black borders</option>
+                    </select>
+                    <p id="pairFitInfo" style="margin: 6px 0 0; font-size: 0.78rem; color: var(--text-muted);"></p>
+                </div>
+                <div id="cropCustomRow" style="display: none; gap: 8px; margin-top: 10px;"><button type="button" class="btn btn-outline" id="btnCropEdit" style="flex: 1; padding: 10px;">Done</button><button type="button" class="btn btn-outline" id="btnCropReset" style="flex: 1; padding: 10px;">Reset crop</button></div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                    <button type="button" class="btn btn-outline" id="btnAutoAlign" style="flex: 1; padding: 10px;" title="Auto-align (N)">Auto-align (N)</button>
+                    <button type="button" class="btn btn-outline" id="btnAutoAlignV" style="flex: 1; padding: 10px;" title="Fix only the vertical offset (keeps your horizontal setting)">Vertical only</button>
+                    <button type="button" class="btn btn-outline" id="btnResetAlign" style="flex: 1; padding: 10px;">Reset</button>
+                    <button type="button" class="btn btn-outline" id="btnSwapLR" style="flex: 1 1 100%; padding: 10px;" title="Swap left/right (E)">Swap L/R (E)</button>
+                    <button type="button" class="btn btn-outline" id="btnComfort" style="flex: 1; padding: 10px;" title="Estimate the 3D disparity range">3D comfort</button>
+                    <button type="button" class="btn btn-outline" id="btnSaveAlign" style="flex: 1; padding: 10px;" title="Save the current alignment to a small file">Save alignment</button>
+                    <button type="button" class="btn btn-outline" id="btnLoadAlign" style="flex: 1; padding: 10px;" title="Load an alignment saved earlier">Load alignment</button>
+                    <input type="file" id="inputLoadAlign" accept=".json,application/json" style="display: none;">
+                    <div id="parallaxInfo" style="flex: 1 1 100%; font-size: 0.78rem; color: var(--text-muted);"></div>
+                </div>
+            </div>
+
+            <div class="panel-section" id="animSettingsPanel">
+                <div class="panel-title">Animation Settings</div>
+                <div class="control-group">
+                    <label>Speed (ms) <span id="valSpeed">150</span></label>
+                    <input type="range" id="speedRange" min="50" max="500" value="150" step="10" dir="rtl">
+                </div>
+                <label class="checkbox-label" style="margin-top: 15px;">
+                    <input type="checkbox" id="interpolateCheck" checked>
+                    Smooth Crossfade
+                </label>
+                <div id="wigRenderer" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;"></div>
+            </div>
+
+            <div class="panel-section" id="anaglyphSettingsPanel" style="display: none;">
+                <div class="panel-title">3D Glasses Settings</div>
+                <div class="control-group">
+                    <label>Color Method</label>
+                    <select id="anaglyphMode">
+                        <option value="classic" selected>Classic (Red/Cyan)</option>
+                        <option value="halfcolor">Half-Color (Red/Cyan)</option>
+                        <option value="optimized">Optimized (Red/Cyan)</option>
+                        <option value="dubois">Dubois Optimized</option>
+                        <option value="grayscale">Grayscale (Red/Cyan)</option>
+                        <option value="redblue">Classic (Red/Blue)</option>
+                        <option value="greenmagenta">Trioscopic (Green/Magenta)</option>
+                        <option value="custom">Custom mixer (editable matrix)</option>
+                        <option value="crosseye">Cross-eyed (Side-by-side)</option>
+                        <option value="parallel">Parallel side-by-side (free-view)</option>
+                    </select>
+                </div>
+                <div id="anaMixPanel" style="display: none; margin-top: 12px;">
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">Each output color = sum of (left R, G, B) and (right R, G, B) times these numbers.</div>
+                    <div id="anaMixGrid" class="mix-grid"></div>
+                    <div class="indiv-row" style="margin-top: 8px;">
+                        <select id="anaMixPreset" style="flex: 1; min-width: 0;"><option value="dubois">Dubois</option><option value="halfcolor">Half-color</option><option value="optimized">Optimized</option><option value="classic">Classic</option><option value="grayscale">Grayscale</option></select>
+                        <button type="button" class="btn btn-outline" id="btnAnaMixLoad" style="padding: 8px; width: auto;">Load</button>
+                    </div>
+                </div>
+                <div id="anaRenderer" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;"></div>
+            </div>
+            <div class="panel-section" id="indivPanel" style="display: none;">
+                <div class="panel-title">Individual Tools</div>
+                <p id="indivHint" class="indiv-hint"></p>
+                <canvas id="indivHist" class="indiv-hist" width="256" height="70"></canvas>
+                <div id="indivClip" class="indiv-clip"></div>
+                <div id="indivTools" class="indiv-disabled">
+                    <div class="indiv-sub">Rotate</div>
+                    <div class="indiv-row">
+                        <button type="button" class="btn btn-outline" id="btnRotL" title="Rotate 90 degrees counter-clockwise" style="padding: 10px;">&#8634; 90&deg;</button>
+                        <button type="button" class="btn btn-outline" id="btnRotR" title="Rotate 90 degrees clockwise (click again to keep turning)" style="padding: 10px;">&#8635; 90&deg;</button>
+                    </div>
+                    <div class="indiv-sub">Geometry</div>
+                    <div id="adjGeo"></div>
+                    <button type="button" class="btn btn-outline" id="btnResetGeo" style="padding: 10px;">Reset geometry</button>
+                    <div class="indiv-sub">Color mixer</div>
+                    <div class="band-row" id="bandRow"></div>
+                    <div class="control-group"><label>Hue <span id="valBandH">0</span></label><input type="range" id="bandH" min="-100" max="100" step="1" value="0"></div>
+                    <div class="control-group"><label>Saturation <span id="valBandS">0</span></label><input type="range" id="bandS" min="-100" max="100" step="1" value="0"></div>
+                    <div class="control-group"><label>Luminance <span id="valBandL">0</span></label><input type="range" id="bandL" min="-100" max="100" step="1" value="0"></div>
+                    <div class="indiv-row" style="margin-top: 14px;">
+                        <button type="button" class="btn btn-outline" id="btnResetColors" style="padding: 10px;">Reset colors</button>
+                    </div>
+                    <div class="indiv-sub">Exposure</div>
+                    <div id="adjExposure"></div>
+                    <button type="button" class="btn btn-outline" id="btnResetExposure" style="padding: 10px;">Reset exposure</button>
+                    <div class="indiv-sub">Shadows and highlights</div>
+                    <div id="adjShadows"></div>
+                    <button type="button" class="btn btn-outline" id="btnResetShadows" style="padding: 10px;">Reset shadows and highlights</button>
+                    <div class="indiv-sub">Tone curve</div>
+                    <div class="indiv-row" style="align-items: center;">
+                        <canvas id="curvePlot" class="curve-plot" width="120" height="120"></canvas>
+                        <div class="control-group" style="flex: 1;"><label>Channel</label><select id="curveCh"><option value="rgb">RGB</option><option value="r">Red</option><option value="g">Green</option><option value="b">Blue</option></select></div>
+                    </div>
+                    <div id="adjCurve"></div>
+                    <button type="button" class="btn btn-outline" id="btnResetCurve" style="padding: 10px;">Reset curve</button>
+                    <div class="indiv-sub">Curves</div>
+                    <div class="crv-chs" id="crvChs" role="group" aria-label="Channel">
+                        <button type="button" class="crv-ch" data-ch="rgb" aria-pressed="true">RGB</button><button type="button" class="crv-ch" data-ch="r" aria-pressed="false">Red</button><button type="button" class="crv-ch" data-ch="g" aria-pressed="false">Green</button><button type="button" class="crv-ch" data-ch="b" aria-pressed="false">Blue</button>
+                    </div>
+                    <canvas id="crvPlot" class="crv-plot" width="256" height="256" tabindex="0" aria-label="Curves graph: arrow keys move the selected point, Delete removes it"></canvas>
+                    <div class="crv-read"><span>Input</span> <b id="crvIn">–</b> <span>Output</span> <b id="crvOut">–</b></div>
+                    <p class="crv-hint">Click the line to add a point, then drag it. To remove a point, drag it off the graph or double-click it.</p>
+                    <div class="indiv-row">
+                        <button type="button" class="btn btn-outline" id="btnCrvResetCh" title="Straight line again for the channel shown" style="padding: 10px;">Reset channel</button>
+                        <button type="button" class="btn btn-outline" id="btnCrvReset" title="Straight lines again for RGB, red, green and blue" style="padding: 10px;">Reset curves</button>
+                    </div>
+                    <div class="indiv-sub">White balance</div>
+                    <div id="adjWB"></div>
+                    <div class="indiv-row">
+                        <button type="button" class="btn btn-outline" id="btnPickWB" title="Then click something neutral (grey or white) in a photo" style="padding: 10px;">Pick neutral</button>
+                        <button type="button" class="btn btn-outline" id="btnResetWB" style="padding: 10px;">Reset white balance</button>
+                    </div>
+                    <div class="indiv-sub">Presets (colors and tone)</div>
+                    <div class="indiv-row"><select id="presetSel" style="flex: 1; min-width: 0;"></select><button type="button" class="btn btn-outline" id="btnPresetApply" style="padding: 10px; width: auto;">Apply</button></div>
+                    <div class="indiv-row" style="margin-top: 8px;"><input type="text" id="presetName" maxlength="40" placeholder="New preset name" class="indiv-text"><button type="button" class="btn btn-outline" id="btnPresetSave" style="padding: 10px; width: auto;">Save</button></div>
+                    <button type="button" class="btn btn-outline" id="btnPresetDel" style="padding: 10px; margin-top: 8px;">Delete selected preset</button>
+                    <div class="indiv-row" style="margin-top: 8px;">
+                        <button type="button" class="btn btn-outline" id="btnPresetFileSave" title="Save the colors and tone of the selected photo to a .json file" style="padding: 10px;">Save to file</button>
+                        <button type="button" class="btn btn-outline" id="btnPresetFileOpen" title="Open colors and tone saved in a .json file and apply them to the selected photos" style="padding: 10px;">Open file</button>
+                    </div>
+                    <input type="file" id="inputPresetFile" accept=".json,application/json" style="display: none;">
+                    <div class="indiv-row" style="margin-top: 18px;">
+                        <button type="button" class="btn btn-outline" id="btnResetIndiv" title="Rotation, color mixer and every adjustment of the selected photos" style="padding: 10px;">Reset everything</button>
+                    </div>
+                </div>
+                <div class="indiv-sub">Both photos</div>
+                <button type="button" class="btn btn-outline" id="btnAutoRotate" title="Turns the right photo to agree with the left one, and both upright when they look upside down" style="padding: 10px; margin-bottom: 8px;">Auto-rotate both photos</button>
+                <button type="button" class="btn btn-outline" id="btnPointAlign" title="Click a detail in the left photo, then the same detail in the right photo" style="padding: 10px; margin-bottom: 8px;">Align on one detail (2 clicks)</button>
+                <div class="indiv-row" style="margin-bottom: 8px;">
+                    <button type="button" class="btn btn-outline" id="btnCopyLR" title="Copy colors and tone from the left photo to the right" style="padding: 10px;">Copy L &rarr; R</button>
+                    <button type="button" class="btn btn-outline" id="btnCopyRL" title="Copy colors and tone from the right photo to the left" style="padding: 10px;">Copy R &rarr; L</button>
+                </div>
+                <button type="button" class="btn btn-outline" id="btnMatchColors" title="Match the right photo's colors to the left, and keep them matched while it is on (press again to undo)" style="padding: 10px;">Match colors (right to left)</button>
+                <div id="indivRenderer" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;"></div>
+            </div>
+        </div>
+
+        <div class="viewport-area">
+            <div class="viewport-tabs">
+                <button class="view-tab active" data-target="wiggle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="6" width="10" height="12" rx="2"></rect><path d="M4 9.5 2.5 12 4 14.5M20 9.5 21.5 12 20 14.5"></path><path d="M10 14.5l2-3 2 3"></path></svg><span>Wigglegram (W)</span></button>
+                <button class="view-tab" data-target="anaglyph"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18v4.5a2.5 2.5 0 0 1-2.5 2.5h-3.2a2 2 0 0 1-1.7-1L12 13l-1.6 2a2 2 0 0 1-1.7 1H5.5A2.5 2.5 0 0 1 3 13.5z"></path><path d="M3 9 4.5 5.5M21 9l-1.5-3.5"></path><path d="M5 10.8h4.6v2.4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" fill="currentColor" stroke="none"></path></svg><span>Anaglyph 3D (A)</span></button>
+                <button class="view-tab" data-target="individual"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="8.5" height="11" rx="1.5"></rect><rect x="13" y="5" width="8.5" height="11" rx="1.5"></rect><path d="M4.5 13.5 6.8 10.5l2.2 3M15 13.5l2.3-3 2.2 3"></path><path d="M4 20h5M15 20h5"></path><circle cx="7.5" cy="20" r="1" fill="currentColor" stroke="none"></circle><circle cx="16.5" cy="20" r="1" fill="currentColor" stroke="none"></circle></svg><span>Individual Images (T)</span></button>
+            </div>
+            
+            <div class="canvas-container">
+                <canvas id="wiggleCanvas" class="active"></canvas>
+                <canvas id="anaglyphCanvas"></canvas>
+                <div id="indivView" class="indiv-view">
+                    <button type="button" class="indiv-card" id="cardL" aria-pressed="false" title="Click to select or deselect the left photo"><canvas id="indivCanvasL"></canvas><span>Left</span></button>
+                    <button type="button" class="indiv-card" id="cardR" aria-pressed="false" title="Click to select or deselect the right photo"><canvas id="indivCanvasR"></canvas><span>Right</span></button>
+                    <div id="indivWarn" class="indiv-warn"></div>
+                </div>
+                
+                <div class="play-controls hidden" id="zoomControls">
+                    <button class="btn-icon" id="btnIndivZoom" title="Zoom the selected photo (mouse wheel or pinch to zoom, drag to move)" aria-label="Zoom the selected photo" aria-pressed="false">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4H5.5A2 2 0 0 0 3.5 6v10a2 2 0 0 0 2 2H9"></path><circle cx="15" cy="13" r="4.5"></circle><path d="M18.3 16.3 21 19"></path></svg>
+                    </button>
+                </div>
+                <div class="play-controls hidden" id="compareControls">
+                    <button class="btn-icon compare-on" id="btnCompare" title="Before / after (Space): blue = your edits are shown" aria-pressed="true" aria-label="Show the photos before or after your edits">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="12" y1="4" x2="12" y2="20"></line><path d="M12 4h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7z" fill="currentColor" stroke="none"></path></svg>
+                    </button>
+                </div>
+                <div class="play-controls" id="playControls">
+                    <button class="btn-icon" id="btnPlayPause" title="Play/Pause (Space)">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="5.5" y="4.5" width="4.6" height="15" rx="1.4"></rect><rect x="13.9" y="4.5" width="4.6" height="15" rx="1.4"></rect></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar sidebar-right">
+            <div class="panel-section" style="background: rgba(99, 102, 241, 0.03); min-height: 100%;">
+                <div class="panel-title" style="color: var(--text-light);">Export Center</div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Save your aligned project in various formats.</p>
+                
+                <div class="btn-group-vertical">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px; font-weight: 600;">Project</div>
+                    <button type="button" class="btn btn-outline" id="btnSaveProject" title="The original photos, unchanged, with every setting and the undo history (Ctrl+S)">Save project (.3dta)</button>
+                    <button type="button" class="btn btn-outline" id="btnHistory" title="Every change you made, step by step: click one to go back to it (U)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6.4v3.2M7 14.4v3.2"></path><circle cx="7" cy="4.5" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="7" cy="12" r="2.4"></circle><circle cx="7" cy="19.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M12 4.5h8.5M12.5 12h8M12 19.5h5.5"></path></svg><span>Show history (U)</span><span id="histCount" class="hs-count"></span></button>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Stereoscopic Formats</div>
+                    <button type="button" class="btn" id="btnExportSBS">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"></rect><path d="M12 4v12.5"></path><path d="M5.2 8.8l2.1 2.1 2.1-2.1M14.6 8.8l2.1 2.1 2.1-2.1"></path><path d="M4.5 20.5h15"></path></svg>
+                        <span id="btnExportSBSText">Save as SBS (S)</span>
+                    </button>
+                    <button type="button" class="btn btn-outline" id="btnExportMPO">Save as MPO (M)</button>
+                    <div class="control-group" hidden>   <!-- set in Settings > Compatibility -->
+                        <label>MPO compatibility profile</label>
+                        <select id="mpoProfile"><option value="std" selected>Standard (recommended)</option><option value="nothumb">Standard, no thumbnail</option><option value="nogeo">No stereo geometry tags</option><option value="basic">Basic (minimal metadata)</option></select>
+                    </div>
+                    <div class="control-group" hidden><label><input type="checkbox" id="mpoCamera" checked> Copy camera info (make, model, exposure) into the MPO</label></div>   <!-- set in Settings > Compatibility -->
+                    <button type="button" class="btn btn-outline" id="btnCopyView" title="Wigglegram and Individual Images: the two photos side by side (paste them here to open the 3D photo again). Anaglyph: the anaglyph picture.">Copy to clipboard</button>
+                    <button type="button" class="btn btn-outline" id="btnSaveLR">Save left / right as separate JPEGs (ZIP)</button>
+                    <button type="button" class="btn btn-outline" id="btnViewerHtml">Save standalone 3D viewer (HTML)</button>
+                    <button type="button" class="btn btn-outline" id="btnInspect" style="display: none;">Inspect MPO data</button>
+                    <button type="button" class="btn btn-outline" id="btnInfo">Image info</button>
+                    
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Static Render</div>
+                    <button type="button" class="btn btn-outline" id="btnExportAnaglyph">Save Anaglyph PNG (P)</button>
+                    
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Animation Render</div>
+                    <details style="margin: 4px 0;">
+                        <summary style="cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">Wiggle export options</summary>
+                        <div class="control-group" style="margin-top: 8px;"><label>Watermark text (GIF, APNG, video, anaglyph)</label>
+                            <input type="text" id="wmText" maxlength="60" placeholder="e.g. (c) Your Name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--bg-dark); color: var(--text-light);"></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Watermark depth <span id="valWmDepth">0.0</span>% (+ = in front of the screen)</label>
+                            <input type="range" id="wmDepth" min="-3" max="3" step="0.1" value="0"></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Logo image (PNG, optional)</label>
+                            <div class="indiv-row"><button type="button" class="btn btn-outline" id="btnWmLogo" style="padding: 8px;">Choose logo...</button><button type="button" class="btn btn-outline" id="btnWmLogoClear" style="padding: 8px;">Remove</button></div>
+                            <input type="file" id="wmLogoFile" accept="image/png,image/*" style="display: none;"><div id="wmLogoInfo" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">No logo.</div></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>GIF / APNG max width</label>
+                            <select id="expWidth"><option value="480">480 px</option><option value="800" selected>800 px</option><option value="1200">1200 px</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Loops (GIF / APNG)</label>
+                            <select id="expLoops"><option value="0" selected>Infinite</option><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Video length</label>
+                            <select id="expVidSec"><option value="3" selected>about 3 s</option><option value="6">about 6 s</option><option value="10">about 10 s</option></select></div>
+                        <div class="control-group" style="margin-top: 8px;"><label>Video frame rate</label>
+                            <select id="expFps"><option value="24">24 fps</option><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></div>
+                    </details>
+                    <button type="button" class="btn btn-outline" id="btnExportGIF">Save High-Res GIF (G)</button>
+                    <button type="button" class="btn btn-outline" id="btnExportAPNG">Save APNG (24-bit animated PNG)</button>
+                    <button type="button" class="btn btn-outline" id="btnExportVideo">Save Video MP4 (V)</button>
+
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px; font-weight: 600;">Start Over</div>
+                    <button type="button" class="btn btn-danger" id="btnResetImage" title="Undo every change made in the left panels (asks first)">Reset image</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- === SBS EXPORT MODAL === -->
+    <div id="sbsModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="btnCloseSbsModal" title="Close (Esc)">&times;</button>
+            <div class="modal-left">
+                <div class="panel-title" style="margin-bottom: 25px; color: var(--primary);">SBS Export Settings</div>
+                
+                <div class="control-group">
+                    <label>Layout Format</label>
+                    <select id="sbsLayoutMode">
+                        <option value="full-sbs">Full Side-by-Side (100% width)</option>
+                        <option value="half-sbs">Half Side-by-Side (Proportional Scale)</option>
+                        <option value="top-bottom">Full Top-Bottom</option>
+                        <option value="half-tb">Half Top-Bottom (Proportional Scale)</option>
+                        <option value="half-sbs-ana">Half Side-by-Side (Anamorphic - TV / 3D players)</option>
+                        <option value="half-tb-ana">Half Top-Bottom (Anamorphic - TV / 3D players)</option>
+                        <option value="crosseye">Cross-Eyed (Swapped L/R)</option>
+                        <option value="row-int">Row-interlaced (passive 3D monitors)</option>
+                        <option value="col-int">Column-interlaced</option>
+                        <option value="checker-int">Checkerboard-interlaced</option>
+                        <option value="lrl">Freeview L-R-L (parallel + cross-eye)</option>
+                        <option value="rlr">Freeview R-L-R</option>
+                        <option value="card">Stereo card (classic 7 x 3.5 in, for printing)</option>
+                        <option value="vr">VR (SBS, square cells)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group" style="margin-top: 20px;">
+                    <label>Border Style</label>
+                    <select id="sbsBorderStyle">
+                        <option value="none" selected>None (Raw Image)</option>
+                        <option value="square">Square Frame</option>
+                        <option value="vintage">Vintage (Classic Arched Top)</option>
+                    </select>
+                </div>
+
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>Background Color</label>
+                    <div class="color-picker-row">
+                        <input type="color" id="sbsBgColor" value="#e1d4c1">
+                        <span style="font-size: 0.85rem; color: var(--text-muted);">Pick card color</span>
+                    </div>
+                </div>
+
+                <div class="control-group" id="sbsCardGroup" style="margin-top: 20px; display: none;">
+                    <label>Card title (optional)</label>
+                    <input type="text" id="sbsCardTitle" maxlength="70" placeholder="e.g. Lisbon, 2026" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--bg-dark); color: var(--text-light);">
+                    <div class="color-picker-row" style="margin-top: 8px;"><input type="color" id="sbsCardColor" value="#e8dcc0"><span style="font-size: 0.85rem; color: var(--text-muted);">Card color</span></div>
+                    <div class="color-picker-row" style="margin-top: 8px;"><input type="color" id="sbsCardText" value="#4a3f35"><span style="font-size: 0.85rem; color: var(--text-muted);">Title color</span></div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 8px;">Each photo is cropped to a centered square, like the classic 3 x 3 in views.</div>
+                </div>
+                <div class="control-group" id="sbsWmGroup" style="margin-top: 20px; display: none;">
+                    <label>Watermark text (printed in the border under BOTH photos)</label>
+                    <input type="text" id="sbsWm" maxlength="60" placeholder="e.g. (c) Your Name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--bg-dark); color: var(--text-light);">
+                    <label style="margin-top: 8px;">Depth <span id="valSbsWmDepth">0.0</span>% (+ = in front of the photos)</label>
+                    <input type="range" id="sbsWmDepth" min="-3" max="3" step="0.1" value="0">
+                    <div class="color-picker-row" style="margin-top: 8px;">
+                        <input type="color" id="sbsWmColor" value="#4a3f35">
+                        <span style="font-size: 0.85rem; color: var(--text-muted);">Text color</span>
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 20px;">
+                    <label>File Format</label>
+                    <select id="sbsFormat">
+                        <option value="jpg" selected>JPEG (small, best for TVs)</option>
+                        <option value="png">PNG (lossless, large)</option>
+                    </select>
+                </div>
+
+                <div class="control-group" id="sbsQualGroup" style="margin-top: 10px;">
+                    <label>JPEG Quality <span id="sbsQualVal">95</span>%</label>
+                    <input type="range" id="sbsQuality" min="50" max="100" step="1" value="95">
+                </div>
+
+                <div class="control-group" id="sbsJpsGroup" style="margin-top: 10px;">
+                    <label style="display: flex; gap: 8px; align-items: flex-start; cursor: pointer; font-weight: 400;"><input type="checkbox" id="sbsJps" style="margin-top: 3px; flex: none;"><span>Save as JPS (.jps): a JPEG that also records its 3D layout, so stereo viewers open it directly</span></label>
+                </div>
+
+                <div style="margin-top: auto; padding-top: 30px;">
+                    <button class="btn" id="btnConfirmSbsSave">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"></rect><path d="M12 4v12.5"></path><path d="M5.2 8.8l2.1 2.1 2.1-2.1M14.6 8.8l2.1 2.1 2.1-2.1"></path><path d="M4.5 20.5h15"></path></svg>
+                        Save Image (S)
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-right">
+                <canvas id="sbsPreviewCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- the app, in load order (classic scripts, so it also works when opened straight from disk) -->
+    <script src="js/01-core.js" data-part="js/01-core.js"></script>
+    <script src="js/02-mpo-image.js" data-part="js/02-mpo-image.js"></script>
+    <script src="js/03-input-align.js" data-part="js/03-input-align.js"></script>
+    <script src="js/04-animation-anaglyph.js" data-part="js/04-animation-anaglyph.js"></script>
+    <script src="js/05-export.js" data-part="js/05-export.js"></script>
+    <script src="js/06-mpo-create.js" data-part="js/06-mpo-create.js"></script>
+    <script src="js/07-keys-view.js" data-part="js/07-keys-view.js"></script>
+    <script src="js/08-undo.js" data-part="js/08-undo.js"></script>
+    <script src="js/09-extras.js" data-part="js/09-extras.js"></script>
+    <script src="js/10-project.js" data-part="js/10-project.js"></script>
+    <script src="js/11-viewer.js" data-part="js/11-viewer.js"></script>
+    <script src="js/12-debug.js" data-part="js/12-debug.js"></script>
+    <script src="js/13-tool-depth.js" data-part="js/13-tool-depth.js"></script>
+    <script src="js/14-tools.js" data-part="js/14-tools.js"></script>
+    <script src="js/15-indiv-pixels.js" data-part="js/15-indiv-pixels.js"></script>
+    <script src="js/16-indiv-gpu.js" data-part="js/16-indiv-gpu.js"></script>
+    <script src="js/17-indiv-workers.js" data-part="js/17-indiv-workers.js"></script>
+    <script src="js/18-indiv-render.js" data-part="js/18-indiv-render.js"></script>
+    <script src="js/19-indiv-tools.js" data-part="js/19-indiv-tools.js"></script>
+    <script src="js/20-rotation-batch.js" data-part="js/20-rotation-batch.js"></script>
+    <script src="js/21-pair-size.js" data-part="js/21-pair-size.js"></script>
+    <script src="js/22-history.js" data-part="js/22-history.js"></script>
+    <!-- languages: one file each in js/lang/, then the code that applies them -->
+    <script src="js/lang/pt-BR.js" data-part="js/lang/pt-BR.js"></script>
+    <script src="js/23-i18n.js" data-part="js/23-i18n.js"></script>
+    <script src="js/24-sliders.js" data-part="js/24-sliders.js"></script>
+    <script src="js/25-curves.js" data-part="js/25-curves.js"></script>
+    <script src="js/26-panels.js" data-part="js/26-panels.js"></script>
+    <script src="js/27-prefs.js" data-part="js/27-prefs.js"></script>
+    <script src="js/28-zoom.js" data-part="js/28-zoom.js"></script>
+    <script>
+        // Start-up check, part 2: were all the files above found, and did each one run to the end?
+        // If not, a message in English or Portuguese says which ones and what to do (the app's own texts may be missing too).
+        (function () {
+            window.removeEventListener('error', APP_BOOT.onErr, true);
+            const root = getComputedStyle(document.documentElement), bad = [];
+            const why = (p) => { const f = APP_BOOT.errs.find(([n]) => n === p || String(n).split('?')[0].endsWith('/' + p)); return f ? f[1] : ''; };
+            document.querySelectorAll('[data-part]').forEach(el => {
+                const p = el.dataset.part;
+                if (el.tagName === 'SCRIPT' ? !APP_PARTS.includes(el) : !root.getPropertyValue('--part-' + p.split('/').pop().replace(/\.css$/, '')).trim()) bad.push([p, why(p)]);
+            });
+            if (!bad.length) return;
+            let lang = 'en';
+            try { const q = (location.search.match(/[?&]lang=([a-z]+)/i) || [])[1], s = localStorage.getItem('3dtool-lang'), n = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+                lang = /^pt/i.test(q || s || n) ? 'pt' : 'en'; } catch (e) { }
+            const T = lang === 'pt' ? {
+                title: 'O 3DToolAD não conseguiu iniciar', lead: 'Alguns arquivos do programa estão faltando ou não puderam ser carregados:',
+                nf: 'não encontrado', err: 'erro ao iniciar', more: 'e mais {n}',
+                bad: 'Um arquivo está danificado ou foi editado com um erro. Baixe o programa de novo (ou desfaça a última alteração feita nesse arquivo) e recarregue a página.',
+                help: 'Isso costuma acontecer quando só o index.html foi copiado. Mantenha as pastas <b>css</b> e <b>js</b> junto do index.html (descompacte o download inteiro, sem mudar nada de lugar) e recarregue a página.',
+                alt: 'Se preferir um arquivo só, rode <b>build_single_file.py</b> (vem junto com o programa): ele cria um único arquivo .html que funciona sozinho.',
+                btn: 'Recarregar'
+            } : {
+                title: '3DToolAD could not start', lead: 'Some of its files are missing or could not be loaded:',
+                nf: 'not found', err: 'error while starting', more: 'and {n} more',
+                bad: 'A file is damaged or was edited with a mistake. Download the program again (or undo the last change made to that file) and reload the page.',
+                help: 'This usually happens when only index.html was copied. Keep the <b>css</b> and <b>js</b> folders next to index.html (unzip the whole download without moving anything) and reload the page.',
+                alt: 'If you prefer a single file, run <b>build_single_file.py</b> (it comes with the program): it makes one .html file that works on its own.',
+                btn: 'Reload'
+            };
+            const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const shown = bad.slice(0, 8).map(([p, w]) => '<li><code>' + esc(p) + '</code>' + ' — ' + esc(w === 'not found' ? T.nf : w && w !== 'Script error.' ? T.err + ': ' + w : T.err) + '</li>').join('')
+                + (bad.length > 8 ? '<li>' + T.more.replace('{n}', bad.length - 8) + '</li>' : '');
+            const o = document.createElement('div');
+            o.setAttribute('role', 'alertdialog'); o.setAttribute('data-noi18n', '1');
+            o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0d0d0f;color:#f4f4f5;display:flex;align-items:center;justify-content:center;padding:16px;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:auto';
+            o.innerHTML = '<div style="max-width:560px;width:100%;background:#1a1a1e;border:1px solid #ef4444;border-radius:12px;padding:22px 22px 18px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'
+                + '<div style="font-size:1.2rem;font-weight:700;margin-bottom:10px">⚠ ' + T.title + '</div>'
+                + '<div style="color:#d4d4d8">' + T.lead + '</div>'
+                + '<ul style="margin:10px 0 14px;padding-left:22px;color:#fca5a5;font-size:0.88rem;word-break:break-word">' + shown + '</ul>'
+                + '<p style="margin:0 0 10px;color:#d4d4d8">' + (bad.some(([, w]) => w === 'not found') ? T.help : T.bad) + '</p><p style="margin:0 0 16px;color:#a1a1aa;font-size:0.88rem">' + T.alt + '</p>'
+                + '<button type="button" style="font:inherit;font-weight:600;background:#6366f1;color:#fff;border:0;border-radius:8px;padding:9px 18px;cursor:pointer">' + T.btn + '</button></div>';
+            o.querySelector('button').onclick = () => location.reload();
+            document.body.appendChild(o);
+            console.error('3DToolAD start-up check failed:', bad);
+        })();
+    </script>
+</body>
+</html>

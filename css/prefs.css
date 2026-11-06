@@ -1,0 +1,91 @@
+/* 3DToolAD - Copyright (C) 2026 adpietri - GPL v3 or later.
+   The Settings window, the panel order and the panel colours (js/27-prefs.js). */
+
+/* Settings window */
+.pf-box { max-width: 640px !important; }
+.pf-title { font-weight: 700; font-size: 1.1rem; }
+.pf-tabs { display: flex; gap: 2px; margin: 14px 0 12px; border-bottom: 1px solid var(--panel-border); overflow-x: auto; scrollbar-width: none; }
+.pf-tab {
+    flex: none; padding: 8px 12px; font: inherit; font-size: 0.88rem; cursor: pointer; color: var(--text-muted); background: transparent;
+    border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+}
+.pf-tab:hover { color: var(--text-light); }
+.pf-tab[aria-selected="true"] { color: var(--text-light); border-bottom-color: var(--primary); font-weight: 600; }
+.pf-page { min-height: 230px; }
+.pf-page[hidden] { display: none; }
+.pf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; font-size: 0.9rem; }
+.pf-row > span { flex: 1 1 auto; min-width: 0; }
+.pf-row select, .pf-row input { flex: 0 1 260px; min-width: 0; padding: 7px 8px; font: inherit; font-size: 0.88rem; color: var(--text-light); background: var(--bg-dark); border: 1px solid var(--panel-border); border-radius: 6px; }
+.pf-row input[type="number"] { flex-basis: 110px; }
+.pf-row.pf-col { flex-direction: column; align-items: stretch; gap: 4px; }
+.pf-row.pf-col input { flex-basis: auto; }
+.pf-check { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 4px; font-size: 0.9rem; cursor: pointer; line-height: 1.4; }
+.pf-check input { flex: none; margin-top: 3px; }
+.pf-note { margin: 2px 0 8px; font-size: 0.78rem; color: var(--text-muted); line-height: 1.45; }
+.pf-ex { word-break: break-all; color: var(--text-light); }
+.pf-sub { margin-top: 6px; font-size: 0.9rem; font-weight: 600; }
+.pf-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pf-btns .btn { width: auto; padding: 8px 12px; font-size: 0.85rem; }
+.pf-box > div:last-child { justify-content: flex-end; }   /* Restore defaults on the left, Cancel and Save on the right */
+.pf-box > div:last-child .pf-left { margin-right: auto; }
+.pf-box > div:last-child .btn { width: auto; flex: 0 0 auto; }
+.pf-box #pfSave { min-width: 96px; }
+@media (max-width: 480px) { .pf-tab { padding: 8px 8px; font-size: 0.8rem; } .pf-row:not(.pf-col) { flex-direction: column; align-items: stretch; gap: 4px; } .pf-row select, .pf-row input { flex-basis: auto; } }
+
+/* Panel order: tools on the right, export on the left (computers and tablets; phones keep the panels under the picture) */
+@media (min-width: 901px) {
+    body.tools-right .editor-screen.active { grid-template-columns: 280px 1fr 300px; }
+    body.tools-right .editor-screen > .sidebar:not(.sidebar-right) { order: 3; border-right: none; border-left: 1px solid var(--panel-border); }
+    body.tools-right .editor-screen > .viewport-area { order: 2; }
+    body.tools-right .editor-screen > .sidebar-right { order: 1; border-left: none; border-right: 1px solid var(--panel-border); }
+}
+@media (min-width: 901px) and (max-width: 1024px) { body.tools-right .editor-screen.active { grid-template-columns: 240px 1fr 240px; } }
+
+/* Panel colours (Settings > Appearance): the side panels, the header, the tab bar, the start screen and the windows together,
+   so nothing stays in the theme's colour next to them. Each sets its own text colours, so it reads well in either theme.
+   (Plain selectors, no :is(), for older browsers.) */
+body[data-panel] .sidebar, body[data-panel] .navbar, body[data-panel] .viewport-tabs, body[data-panel] .modal-content, body[data-panel] #historyWin { background: var(--panel-bg); color: var(--text-light); border-color: var(--panel-border); }
+body[data-panel] .ov > div { background: var(--panel-bg) !important; color: var(--text-light) !important; border-color: var(--panel-border) !important; }   /* windows made by openCard() set these inline */
+body[data-panel] .upload-screen { background: var(--bg-dark); color: var(--text-light); }
+body.center-custom .upload-screen { background: var(--canvas-bg); }   /* the start screen takes the colour chosen for the area around the picture */
+/* Night */ body[data-panel="charcoal"] .sidebar, body[data-panel="charcoal"] .navbar, body[data-panel="charcoal"] .viewport-tabs, body[data-panel="charcoal"] .upload-screen, body[data-panel="charcoal"] .ov > div, body[data-panel="charcoal"] .modal-content, body[data-panel="charcoal"] #historyWin, body[data-panel="charcoal"] .play-controls, body[data-panel="charcoal"] .zoom-bar, body[data-panel="charcoal"] .indiv-card.zoom-on > span { --panel-bg: #1e1f24; --panel-border: #33343c; --bg-dark: #131418; --secondary: #383a43; --text-light: #ececf0; --text-muted: #a2a4ae; color-scheme: dark; }
+/* Stone */ body[data-panel="graphite"] .sidebar, body[data-panel="graphite"] .navbar, body[data-panel="graphite"] .viewport-tabs, body[data-panel="graphite"] .upload-screen, body[data-panel="graphite"] .ov > div, body[data-panel="graphite"] .modal-content, body[data-panel="graphite"] #historyWin, body[data-panel="graphite"] .play-controls, body[data-panel="graphite"] .zoom-bar, body[data-panel="graphite"] .indiv-card.zoom-on > span { --panel-bg: #2a2c33; --panel-border: #3d4049; --bg-dark: #1c1d22; --secondary: #444751; --text-light: #eceef2; --text-muted: #a8abb5; color-scheme: dark; }
+/* Dusk */ body[data-panel="slate"] .sidebar, body[data-panel="slate"] .navbar, body[data-panel="slate"] .viewport-tabs, body[data-panel="slate"] .upload-screen, body[data-panel="slate"] .ov > div, body[data-panel="slate"] .modal-content, body[data-panel="slate"] #historyWin, body[data-panel="slate"] .play-controls, body[data-panel="slate"] .zoom-bar, body[data-panel="slate"] .indiv-card.zoom-on > span { --panel-bg: #252a33; --panel-border: #363d49; --bg-dark: #191d24; --secondary: #3c4452; --text-light: #e8ecf2; --text-muted: #9ea8b8; color-scheme: dark; }
+/* Earth */ body[data-panel="warm"] .sidebar, body[data-panel="warm"] .navbar, body[data-panel="warm"] .viewport-tabs, body[data-panel="warm"] .upload-screen, body[data-panel="warm"] .ov > div, body[data-panel="warm"] .modal-content, body[data-panel="warm"] #historyWin, body[data-panel="warm"] .play-controls, body[data-panel="warm"] .zoom-bar, body[data-panel="warm"] .indiv-card.zoom-on > span { --panel-bg: #332c25; --panel-border: #4a4038; --bg-dark: #221d18; --secondary: #52473d; --text-light: #f0ebe4; --text-muted: #b5a99b; color-scheme: dark; }
+/* Smoke */ body[data-panel="mid"] .sidebar, body[data-panel="mid"] .navbar, body[data-panel="mid"] .viewport-tabs, body[data-panel="mid"] .upload-screen, body[data-panel="mid"] .ov > div, body[data-panel="mid"] .modal-content, body[data-panel="mid"] #historyWin, body[data-panel="mid"] .play-controls, body[data-panel="mid"] .zoom-bar, body[data-panel="mid"] .indiv-card.zoom-on > span { --panel-bg: #45474e; --panel-border: #585a62; --bg-dark: #34363b; --secondary: #5b5d65; --text-light: #f2f2f4; --text-muted: #c4c6cd; color-scheme: dark; }
+/* Paper */ body[data-panel="light"] .sidebar, body[data-panel="light"] .navbar, body[data-panel="light"] .viewport-tabs, body[data-panel="light"] .upload-screen, body[data-panel="light"] .ov > div, body[data-panel="light"] .modal-content, body[data-panel="light"] #historyWin, body[data-panel="light"] .play-controls, body[data-panel="light"] .zoom-bar, body[data-panel="light"] .indiv-card.zoom-on > span { --panel-bg: #e8e9ee; --panel-border: #cbcdd4; --bg-dark: #f7f7f9; --secondary: #d8dae0; --text-light: #1c1d22; --text-muted: #54565e; color-scheme: light; }
+
+/* Settings window: a bit wider; the tab bar scrolls sideways when the tabs do not fit (« and » go through the tabs) */
+.pf-tabbar { display: flex; align-items: stretch; gap: 2px; margin: 14px 0 12px; border-bottom: 1px solid var(--panel-border); }
+.pf-tabbar .pf-tabs { flex: 1 1 auto; min-width: 0; margin: 0; border-bottom: none; flex-wrap: nowrap; overflow-x: auto; scroll-behavior: smooth; }
+.pf-tabs::-webkit-scrollbar { display: none; }
+.pf-nav { flex: none; width: 28px; padding: 0; font: inherit; font-size: 1rem; line-height: 1; cursor: pointer; color: var(--text-muted); background: transparent; border: none; border-radius: 6px; }
+.pf-nav:hover:not(:disabled) { color: var(--text-light); background: var(--secondary); }
+.pf-nav:disabled { opacity: 0.3; cursor: default; }
+
+/* While a window is open the page behind does not scroll; the window itself always scrolls (phones and tablets) */
+html.modal-open, html.modal-open body { overflow: hidden !important; }
+.ov { overscroll-behavior: contain; }
+.ov > div { max-height: calc(100vh - 32px) !important; max-height: calc(100dvh - 32px) !important; overflow-y: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.modal-content { overscroll-behavior: contain; }
+
+/* Zoom (Individual Images, js/28-zoom.js) */
+#zoomControls { right: 80px; }
+@media (max-width: 900px) { #zoomControls, .zoom-bar { display: none !important; } }
+.indiv-view.zoomed { padding: 0; overflow: hidden; }
+.indiv-view.zoomed > .indiv-card:not(.zoom-on), .indiv-view.zoomed > .indiv-warn { display: none; }
+.indiv-card.zoom-on { position: absolute; inset: 0; max-width: none; padding: 0 !important; border: none !important; border-radius: 0; background: transparent; overflow: hidden; cursor: grab; touch-action: none; }
+.indiv-card.zoom-on:active { cursor: grabbing; }
+.indiv-view.picking .indiv-card.zoom-on { cursor: crosshair; }
+.indiv-card.zoom-on canvas { position: absolute; max-width: none; max-height: none; transform-origin: 0 0; }
+.indiv-card.zoom-on > span { position: absolute; left: 12px; top: 12px; z-index: 2; padding: 3px 8px; border-radius: 6px; color: var(--text-light); background: var(--panel-bg); border: 1px solid var(--panel-border); }
+.zoom-bar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: none; gap: 4px; align-items: center; padding: 5px; z-index: 6;
+    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px; box-shadow: var(--shadow); }
+.indiv-view.zoomed .zoom-bar { display: flex; }
+.zoom-bar button { min-width: 32px; height: 32px; padding: 0 10px; font: inherit; font-size: 0.85rem; cursor: pointer; color: var(--text-light); background: transparent; border: 1px solid transparent; border-radius: 7px; }
+.zoom-bar button:hover { background: var(--secondary); }
+.zoom-bar #zbBack { border-color: var(--panel-border); }
+.zb-pct { min-width: 3.6em; text-align: center; font-size: 0.82rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* start-up check: this file was found (see index.html) */
+:root { --part-prefs: 1; }
