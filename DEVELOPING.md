@@ -189,3 +189,31 @@ those files, so there the `accept` is removed when such a picker opens (03-input
 - Settings: "Save settings to a .json file" first keeps what the window shows (`commit()`); closing with unkept changes says so.
 - Screen readers: `a11yName` (26-panels.js) links each label to the control after it and names every slider value box.
 
+## 6.1
+
+- Auto-align head start (`scheduleAlignWarm`, 03-input-align.js): only while the picture stands still (alignment mode, paused
+  animation, anaglyph view) and one small image at a time. Done in one go 2.5 s after opening, it froze the playing
+  wigglegram for a moment after every file was opened.
+- Saving on iPad / iPhone: `saveBlob` uses the share sheet also when a trackpad or mouse is attached (`IS_IOS`,
+  `any-pointer: coarse`). When the export took so long that the browser refuses the share sheet (NotAllowedError: the tap
+  that started it is too old), "The file is ready" asks for one more tap, and `share()` is called inside that tap.
+- Match colors (18-indiv-render.js): while on, `indivMatchRefresh()` (start of `indivRegen`) makes the tables again when the edits
+  changed (`indiv.matchKey`), so the right photo stays matched to the left after a neutral pick, a preset, a curve or undo.
+
+## 6.2
+
+- Settings > Appearance "Open in the tab" (`goStartTab`, 27-prefs.js) is the tab of the start screen: applied when the program
+  starts, after Clear (`resetApp`) and when it is saved on the start screen. It used to apply only when the page loaded, so
+  photos opened after Clear landed in the tab used before. Photos opened over open ones keep the tab in use; a project
+  reopens in the tab it was saved in (10-project.js).
+- Copy to clipboard (14-tools.js): Wigglegram and Individual Images copy the two photos side by side (left | right, edits,
+  alignment and crop applied, at most 40 MP); Anaglyph copies the anaglyph picture. 6.1 copied the frame the wigglegram was
+  showing - one photo - which pasted back was cut into two halves of the same eye. A paste of the program's own copy is
+  recognised by its size (`lastCopy`): the pair opens left | right whatever the layout chosen; the anaglyph says it cannot
+  be a 3D pair. The PNG is given to `ClipboardItem` as a promise inside the tap (some browsers accept a write only during the tap itself).
+
+## 6.3
+
+- Comments, test names and messages describe behaviour in general terms ("some browsers", "a file whose metadata was
+  rewritten") and do not name other companies' programs or apps.
+- MPO inspector: a size difference between the MPF index and the JPEG is reported as a neutral note.
